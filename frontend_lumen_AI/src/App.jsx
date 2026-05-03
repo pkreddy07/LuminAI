@@ -1,13 +1,20 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import CandidateInterview from './pages/CandidateInterview';
-import AdminDashboard from './pages/AdminDashboard';
-import './index.css';
+import Login from './pages/auth/Login';
+import Register from './pages/auth/Register';
+import CandidateHome from './pages/candidate/CandidateHome';
+import InterviewRules from './pages/candidate/InterviewRules';
+import ActiveInterview from './pages/candidate/ActiveInterview';
+import AdminDashboard from './pages/admin/AdminDashboard';
 
 function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<CandidateInterview />} />
+        <Route path="/" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/home" element={<CandidateHome />} />
+        <Route path="/rules/:id" element={<InterviewRules />} />
+        <Route path="/interview/:id" element={<ActiveInterview />} />
         <Route path="/admin" element={<AdminDashboard />} />
       </Routes>
     </Router>
