@@ -1,74 +1,100 @@
-from pydantic import BaseModel, Field, EmailStr
-from typing import Optional, List
+from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from pydantic.functional_validators import BeforeValidator
+from pydantic.functional_serializers import PlainSerializer
+from typing import Optional, List, Annotated, Any
 from datetime import datetime
 from bson import ObjectId
 
-class PyObjectId(ObjectId):
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
-    @classmethod
-    def validate(cls, v):
-        if not ObjectId.is_valid(v):
-            raise ValueError("Invalid ObjectId")
+# ---------------------------------------------------------
+# PYDANTIC V2 OBJECT_ID HELPER
+# ---------------------------------------------------------
+def validate_object_id(v: Any) -> ObjectId:
+    if isinstance(v, ObjectId):
+        return v
+    if ObjectId.is_valid(v):
         return ObjectId(v)
-    @classmethod
-    def __modify_schema__(cls, field_schema):
-        field_schema.update(type="string")
+    raise ValueError("Invalid ObjectId")
 
-# 1. Base User (Handles Auth for both Admin and Candidate)
+# This tells Pydantic V2: "Convert strings to ObjectIds for Mongo, and ObjectIds to strings for JSON"
+PyObjectId = Annotated[
+    ObjectId,
+    BeforeValidator(validate_object_id),
+    PlainSerializer(lambda x: str(x), return_type=str, when_used="json")
+]
+
+# ---------------------------------------------------------
+# 1. USERS COLLECTION
+# ---------------------------------------------------------
 class User(BaseModel):
-    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
     email: Optional[EmailStr] = None
     phone_number: Optional[str] = None
     hashed_password: str
-    role: str # "admin" or "candidate"
-    username: str # "What would you like us to call you?"
+    role: str = Field(..., description="'admin' or 'candidate'")
+    username: str = Field(..., description="What the user wants to be called")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-# 2. Candidate Specific Profile Data
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+# ---------------------------------------------------------
+# 2. CANDIDATE PROFILES COLLECTION
+# ---------------------------------------------------------
 class CandidateProfile(BaseModel):
-    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
-    user_id: str # Stringified ObjectId of the User
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    user_id: str 
     district: Optional[str] = None
     city: Optional[str] = None
-    category: Optional[str] = None # Caste/Category
+    category: Optional[str] = None 
     resume_url: Optional[str] = None
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
-# 3. The Open Job Posting (Created by Admin)
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+# ---------------------------------------------------------
+# 3. JOB POSTINGS COLLECTION
+# ---------------------------------------------------------
 class JobPosting(BaseModel):
-    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
-    admin_id: str # Stringified ObjectId of the Admin User
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    admin_id: str 
     organization_name: str
     title: str
     job_description: str
     preferred_questions: List[str] = []
-    ask_category: bool = False
+    ask_category: bool = False 
     start_time: datetime
     end_time: datetime
     is_active: bool = True
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-# 4. The Interview Attempt (When a candidate clicks "Start")
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+# ---------------------------------------------------------
+# 4. INTERVIEW ATTEMPTS COLLECTION
+# ---------------------------------------------------------
 class InterviewAttempt(BaseModel):
-    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
-    candidate_id: str
-    job_id: str
-    initial_snapshot_url: Optional[str] = None
-    status: str = Field(default="In-Progress") # In-Progress, Completed, Rejected (Fraud)
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    candidate_id: str 
+    job_id: str 
+    initial_snapshot_url: Optional[str] = None 
+    status: str = Field(default="In-Progress") 
     overall_semantic_score: Optional[float] = None
     overall_integrity_score: Optional[float] = None
     started_at: datetime = Field(default_factory=datetime.utcnow)
     completed_at: Optional[datetime] = None
 
-# 5. The Conversational Turn
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
+
+# ---------------------------------------------------------
+# 5. INTERVIEW TURNS COLLECTION
+# ---------------------------------------------------------
 class InterviewTurn(BaseModel):
-    id: PyObjectId = Field(default_factory=PyObjectId, alias="_id")
-    attempt_id: str
-    turn_number: int
-    candidate_audio_url: str
-    candidate_transcript: str
-    ai_question_text: str
-    semantic_score: Optional[float] = None
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    attempt_id: str 
+    turn_number: int 
+    candidate_audio_url: str 
+    candidate_transcript: str 
+    ai_question_text: str 
+    semantic_score: Optional[float] = None 
     created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)

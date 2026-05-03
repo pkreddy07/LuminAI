@@ -1,9 +1,13 @@
 from fastapi import FastAPI
+from app.api.endpoints import auth
+from app.api.endpoints import admin
+from app.api.endpoints import candidate
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
+import certifi
 
 load_dotenv()
 
@@ -13,7 +17,7 @@ MONGO_URL = os.getenv("MONGO_URL")
 async def lifespan(app: FastAPI):
     # Startup
     print("Connecting to MongoDB Atlas...")
-    app.mongodb_client = AsyncIOMotorClient(MONGO_URL)
+    app.mongodb_client = AsyncIOMotorClient(MONGO_URL, tlsCAFile=certifi.where())
     app.mongodb = app.mongodb_client.lumin_ai_open # The database name
     print("Successfully connected to MongoDB!")
     yield
@@ -31,6 +35,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(admin.router, prefix="/api/admin", tags=["Admin Dashboard"])
+app.include_router(candidate.router, prefix="/api/candidate", tags=["Candidate Marketplace"])
 
 @app.get("/")
 async def root():
