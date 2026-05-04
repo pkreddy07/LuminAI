@@ -44,12 +44,12 @@ async def create_job_posting(request: Request, job_data: JobPostingCreate, curre
     _require_admin(current_user)
 
     db = request.app.mongodb
-    
+
     # 2. Merge the frontend data with the secure Token data
     # We unpack the frontend payload and inject the user_id from the JWT
     new_job = JobPosting(
         admin_id=current_user["user_id"],
-        **job_data.model_dump() 
+        **job_data.model_dump()
     )
 
     # 3. Save to MongoDB
@@ -64,7 +64,7 @@ async def get_live_jobs(request: Request, current_user: dict = Depends(get_curre
     _require_admin(current_user)
 
     db = request.app.mongodb
-    
+
     # 2. Fetch all active jobs created by THIS specific admin
     cursor = db.job_postings.find({"admin_id": current_user["user_id"], "is_active": True})
     jobs = await cursor.to_list(length=100)
@@ -201,21 +201,25 @@ async def get_job_candidates(
             if skill_value not in skills and skill_value not in primary:
                 return False
         if q:
-            name = (user_doc.get("username") or "").lower()
-            if q.lower() not in name:
+            query = q.lower()
+            if query not in (user_doc.get("username") or "").lower() and \
+               query not in (user_doc.get("email") or "").lower() and \
+               query not in (user_doc.get("phone_number") or "").lower():
                 return False
         return True
 
-    candidate_payload = []
+    payload = []
     for attempt in attempts:
-        user_doc = user_map.get(attempt["candidate_id"]) or {}
-        profile_doc = profile_map.get(attempt["candidate_id"]) or {}
+        user_doc = user_map.get(attempt.get("candidate_id"))
+        if not user_doc:
+            continue
+        profile_doc = profile_map.get(attempt.get("candidate_id"), {})
         if not _matches(profile_doc, user_doc):
             continue
 
-        candidate_payload.append({
-            "candidate_id": attempt["candidate_id"],
-            "name": user_doc.get("username"),
+        payload.append({
+            "candidate_id": attempt.get("candidate_id"),
+            "username": user_doc.get("username"),
             "email": user_doc.get("email"),
             "phone_number": user_doc.get("phone_number"),
             "district": profile_doc.get("district"),
@@ -224,14 +228,15 @@ async def get_job_candidates(
             "primary_skill": profile_doc.get("primary_skill"),
             "skills": profile_doc.get("skills", []),
             "category": profile_doc.get("category"),
-            "resume_url": profile_doc.get("resume_url"),
-            "snapshot_url": attempt.get("initial_snapshot_url"),
+            "recommendation": attempt.get("recommendation"),
             "confidence_score": attempt.get("confidence_score"),
             "communication_score": attempt.get("communication_score"),
             "body_language_score": attempt.get("body_language_score"),
             "overall_score": attempt.get("overall_score"),
-            "recommendation": attempt.get("recommendation"),
-            "status": attempt.get("status")
+            "integrity_match": attempt.get("integrity_match"),
+            "integrity_score": attempt.get("integrity_score"),
+            "started_at": attempt.get("started_at"),
+            "completed_at": attempt.get("completed_at")
         })
 
-    return candidate_payload
+    return payload

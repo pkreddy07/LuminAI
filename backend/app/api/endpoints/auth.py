@@ -86,7 +86,7 @@ def _otp_expires_at() -> datetime:
 @router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(request: Request, user_data: UserRegister):
     db = request.app.mongodb
-    
+
     # 1. Check if user already exists
     existing_user = await db.users.find_one({"email": user_data.email})
     if existing_user:
@@ -100,7 +100,7 @@ async def register(request: Request, user_data: UserRegister):
         role=user_data.role,
         username=user_data.username
     )
-    
+
     # 3. Insert into MongoDB (exclude 'id' so Mongo generates the _id automatically)
     user_dict = new_user.model_dump(by_alias=True, exclude={"id"})
     result = await db.users.insert_one(user_dict)
@@ -116,10 +116,10 @@ async def register(request: Request, user_data: UserRegister):
 @router.post("/login")
 async def login(request: Request, user_data: UserLogin):
     db = request.app.mongodb
-    
+
     # 1. Find user in database
     db_user = await db.users.find_one({"email": user_data.email})
-    
+
     # 2. Verify password
     if not db_user or not verify_password(user_data.password, db_user["hashed_password"]):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
@@ -128,13 +128,13 @@ async def login(request: Request, user_data: UserLogin):
     access_token_expires = timedelta(minutes=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 1440)))
     access_token = create_access_token(
         data={
-            "sub": db_user["email"], 
-            "role": db_user["role"], 
+            "sub": db_user["email"],
+            "role": db_user["role"],
             "user_id": str(db_user["_id"])
         },
         expires_delta=access_token_expires
     )
-    
+
     # Return the token to the frontend
     return {"access_token": access_token, "token_type": "bearer", "role": db_user["role"], "username": db_user["username"]}
 

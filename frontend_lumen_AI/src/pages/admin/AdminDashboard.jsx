@@ -26,7 +26,6 @@ export default function AdminDashboard() {
   const [filters, setFilters] = useState({ district: '', skill: '', language: '', category: '', q: '' });
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleData, setScheduleData] = useState(emptySchedule);
-  const [selectedCandidate, setSelectedCandidate] = useState(null);
 
   useEffect(() => {
     if (!auth?.token) {
@@ -50,7 +49,7 @@ export default function AdminDashboard() {
     };
 
     loadDashboard();
-  }, [auth?.token, navigate]);
+  }, [auth?.token, navigate, selectedJob]);
 
   useEffect(() => {
     if (!selectedJob) return;
@@ -59,7 +58,7 @@ export default function AdminDashboard() {
       try {
         const data = await apiJson(`/api/admin/jobs/${selectedJob._id}/stats`, { token: auth.token });
         setStats(data);
-      } catch (err) {
+      } catch {
         setStats(null);
       }
     };
@@ -79,7 +78,7 @@ export default function AdminDashboard() {
         const query = params.toString() ? `?${params.toString()}` : '';
         const data = await apiJson(`/api/admin/jobs/${selectedJob._id}/candidates${query}`, { token: auth.token });
         setCandidates(data || []);
-      } catch (err) {
+      } catch {
         setCandidates([]);
       }
     }, 300);
@@ -261,64 +260,69 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="bg-white/5 border border-white/10 rounded-3xl p-6 space-y-4">
-                <div className="grid md:grid-cols-4 gap-3">
-                  <input
-                    placeholder="Search name"
-                    value={filters.q}
-                    onChange={(e) => setFilters({ ...filters, q: e.target.value })}
-                    className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-                  />
-                  <input
-                    placeholder="District"
-                    value={filters.district}
-                    onChange={(e) => setFilters({ ...filters, district: e.target.value })}
-                    className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-                  />
-                  <input
-                    placeholder="Skill"
-                    value={filters.skill}
-                    onChange={(e) => setFilters({ ...filters, skill: e.target.value })}
-                    className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-                  />
-                  <input
-                    placeholder="Language"
-                    value={filters.language}
-                    onChange={(e) => setFilters({ ...filters, language: e.target.value })}
-                    className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="grid md:grid-cols-4 gap-3">
-                  <input
-                    placeholder="Category"
-                    value={filters.category}
-                    onChange={(e) => setFilters({ ...filters, category: e.target.value })}
-                    className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-                  />
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                  <div>
+                    <h4 className="text-lg font-semibold">Candidate list</h4>
+                    <p className="text-sm text-slate-300">Filter candidates and review scores.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <input
+                      value={filters.q}
+                      onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+                      placeholder="Search name or email"
+                      className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
+                    />
+                    <input
+                      value={filters.district}
+                      onChange={(e) => setFilters({ ...filters, district: e.target.value })}
+                      placeholder="District"
+                      className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
+                    />
+                    <input
+                      value={filters.skill}
+                      onChange={(e) => setFilters({ ...filters, skill: e.target.value })}
+                      placeholder="Skill"
+                      className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
+                    />
+                    <input
+                      value={filters.language}
+                      onChange={(e) => setFilters({ ...filters, language: e.target.value })}
+                      placeholder="Language"
+                      className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
+                    />
+                    <input
+                      value={filters.category}
+                      onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+                      placeholder="Category"
+                      className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
+                    />
+                  </div>
                 </div>
 
-                <div className="divide-y divide-white/10">
-                  {candidates.length === 0 && (
-                    <div className="py-6 text-sm text-slate-300">No candidates match this filter.</div>
-                  )}
-                  {candidates.map((candidate) => (
-                    <div key={candidate.candidate_id} className="py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                      <div>
-                        <p className="font-semibold">{candidate.name || 'Unnamed candidate'}</p>
-                        <p className="text-xs text-slate-400">{candidate.primary_skill || 'Skill not set'} · {candidate.language || 'Language not set'}</p>
+                {candidates.length === 0 ? (
+                  <p className="text-sm text-slate-400">No candidates match the current filters.</p>
+                ) : (
+                  <div className="grid gap-4">
+                    {candidates.map((candidate) => (
+                      <div key={candidate.candidate_id} className="bg-black/40 border border-white/10 rounded-2xl p-4">
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-semibold">{candidate.username || 'Candidate'}</p>
+                            <p className="text-xs text-slate-400">{candidate.email || candidate.phone_number}</p>
+                            <p className="text-xs text-slate-400">{candidate.district || 'Unknown district'} · {candidate.city || 'Unknown city'}</p>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs">
+                            <span className="bg-white/10 px-3 py-1 rounded-full">Overall: {candidate.overall_score ?? 'NA'}</span>
+                            <span className="bg-emerald-400/20 text-emerald-200 px-3 py-1 rounded-full">
+                              {candidate.recommendation || 'Pending'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs bg-white/10 px-3 py-1 rounded-full">Overall {candidate.overall_score || 0}</span>
-                        <button
-                          onClick={() => setSelectedCandidate(candidate)}
-                          className="text-sm text-emerald-200 hover:text-emerald-100"
-                        >
-                          View info
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </section>
           )}
@@ -326,135 +330,93 @@ export default function AdminDashboard() {
       </div>
 
       {showScheduleModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6 z-50">
-          <div className="bg-slate-950 border border-white/10 rounded-3xl p-6 md:p-8 w-full max-w-2xl">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center px-4 z-40">
+          <div className="bg-slate-900 border border-white/10 rounded-3xl w-full max-w-2xl p-6 space-y-5">
             <div className="flex items-center justify-between">
-              <h3 className="text-xl font-semibold">Schedule an interview</h3>
-              <button onClick={() => setShowScheduleModal(false)} className="text-slate-400 hover:text-white">Close</button>
-            </div>
-            <div className="mt-6 grid gap-4">
-              <input
-                placeholder="Organization name"
-                value={scheduleData.organization_name}
-                onChange={(e) => setScheduleData({ ...scheduleData, organization_name: e.target.value })}
-                className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-              />
-              <input
-                placeholder="Interview title"
-                value={scheduleData.title}
-                onChange={(e) => setScheduleData({ ...scheduleData, title: e.target.value })}
-                className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-              />
-              <textarea
-                rows="4"
-                placeholder="Job description"
-                value={scheduleData.job_description}
-                onChange={(e) => setScheduleData({ ...scheduleData, job_description: e.target.value })}
-                className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-              />
-              <input
-                placeholder="Skills (comma separated)"
-                value={scheduleData.skills}
-                onChange={(e) => setScheduleData({ ...scheduleData, skills: e.target.value })}
-                className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-              />
-              <textarea
-                rows="3"
-                placeholder="Preferred questions (one per line)"
-                value={scheduleData.preferred_questions}
-                onChange={(e) => setScheduleData({ ...scheduleData, preferred_questions: e.target.value })}
-                className="bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-              />
-              <div className="flex flex-col md:flex-row gap-4">
-                <div className="flex-1">
-                  <label className="text-xs uppercase tracking-widest text-slate-400">Start time</label>
-                  <input
-                    type="datetime-local"
-                    value={scheduleData.start_time}
-                    onChange={(e) => setScheduleData({ ...scheduleData, start_time: e.target.value })}
-                    className="mt-2 w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-                  />
-                </div>
-                <div className="flex-1">
-                  <label className="text-xs uppercase tracking-widest text-slate-400">End time</label>
-                  <input
-                    type="datetime-local"
-                    value={scheduleData.end_time}
-                    onChange={(e) => setScheduleData({ ...scheduleData, end_time: e.target.value })}
-                    className="mt-2 w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-sm"
-                  />
-                </div>
-              </div>
-              <label className="flex items-center gap-3 text-sm text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={scheduleData.ask_category}
-                  onChange={(e) => setScheduleData({ ...scheduleData, ask_category: e.target.checked })}
-                  className="h-4 w-4"
-                />
-                Ask candidates for category during interview
-              </label>
-            </div>
-            <div className="mt-6 flex gap-3">
+              <h3 className="text-xl font-semibold">Schedule interview window</h3>
               <button
                 onClick={() => setShowScheduleModal(false)}
-                className="flex-1 bg-white/10 text-white py-3 rounded-xl"
+                className="text-slate-400 hover:text-slate-200"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <input
+                value={scheduleData.organization_name}
+                onChange={(e) => setScheduleData({ ...scheduleData, organization_name: e.target.value })}
+                placeholder="Organization name"
+                className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
+              />
+              <input
+                value={scheduleData.title}
+                onChange={(e) => setScheduleData({ ...scheduleData, title: e.target.value })}
+                placeholder="Role title"
+                className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
+              />
+            </div>
+
+            <textarea
+              value={scheduleData.job_description}
+              onChange={(e) => setScheduleData({ ...scheduleData, job_description: e.target.value })}
+              placeholder="Job description"
+              rows={3}
+              className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white w-full"
+            />
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <input
+                value={scheduleData.skills}
+                onChange={(e) => setScheduleData({ ...scheduleData, skills: e.target.value })}
+                placeholder="Skills (comma separated)"
+                className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
+              />
+              <input
+                value={scheduleData.preferred_questions}
+                onChange={(e) => setScheduleData({ ...scheduleData, preferred_questions: e.target.value })}
+                placeholder="Questions (one per line)"
+                className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
+              />
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <input
+                type="datetime-local"
+                value={scheduleData.start_time}
+                onChange={(e) => setScheduleData({ ...scheduleData, start_time: e.target.value })}
+                className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
+              />
+              <input
+                type="datetime-local"
+                value={scheduleData.end_time}
+                onChange={(e) => setScheduleData({ ...scheduleData, end_time: e.target.value })}
+                className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
+              />
+            </div>
+
+            <label className="flex items-center gap-2 text-sm text-slate-300">
+              <input
+                type="checkbox"
+                checked={scheduleData.ask_category}
+                onChange={(e) => setScheduleData({ ...scheduleData, ask_category: e.target.checked })}
+              />
+              Ask category preference during onboarding
+            </label>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowScheduleModal(false)}
+                className="bg-white/10 text-white px-4 py-2 rounded-xl"
               >
                 Cancel
               </button>
               <button
                 onClick={handleSchedule}
-                className="flex-1 bg-emerald-400 text-slate-950 font-semibold py-3 rounded-xl"
+                className="bg-emerald-400 text-slate-950 px-4 py-2 rounded-xl font-semibold"
               >
-                Schedule now
+                Create window
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {selectedCandidate && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-6 z-50">
-          <div className="bg-slate-950 border border-white/10 rounded-3xl p-6 md:p-8 w-full max-w-3xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-semibold">Candidate details</h3>
-              <button onClick={() => setSelectedCandidate(null)} className="text-slate-400 hover:text-white">Close</button>
-            </div>
-            <div className="mt-6 grid md:grid-cols-[0.6fr_1fr] gap-6">
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex items-center justify-center">
-                {selectedCandidate.snapshot_url ? (
-                  <img src={selectedCandidate.snapshot_url} alt="Candidate" className="rounded-xl object-cover w-full h-48" />
-                ) : (
-                  <div className="text-sm text-slate-400">No snapshot available</div>
-                )}
-              </div>
-              <div className="space-y-3 text-sm">
-                <p><span className="text-slate-400">Name:</span> {selectedCandidate.name || 'Not provided'}</p>
-                <p><span className="text-slate-400">Phone:</span> {selectedCandidate.phone_number || 'Not provided'}</p>
-                <p><span className="text-slate-400">District:</span> {selectedCandidate.district || 'Not provided'}</p>
-                <p><span className="text-slate-400">Language:</span> {selectedCandidate.language || 'Not provided'}</p>
-                <p><span className="text-slate-400">Category:</span> {selectedCandidate.category || 'Not provided'}</p>
-                <p><span className="text-slate-400">Resume:</span> {selectedCandidate.resume_url ? 'Submitted' : 'Not submitted'}</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <p className="text-xs text-slate-400">Confidence</p>
-                    <p className="text-lg font-semibold">{selectedCandidate.confidence_score || 0}</p>
-                  </div>
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <p className="text-xs text-slate-400">Communication</p>
-                    <p className="text-lg font-semibold">{selectedCandidate.communication_score || 0}</p>
-                  </div>
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <p className="text-xs text-slate-400">Body language</p>
-                    <p className="text-lg font-semibold">{selectedCandidate.body_language_score || 0}</p>
-                  </div>
-                  <div className="bg-white/5 border border-white/10 rounded-xl p-3">
-                    <p className="text-xs text-slate-400">Overall</p>
-                    <p className="text-lg font-semibold">{selectedCandidate.overall_score || 0}</p>
-                  </div>
-                </div>
-                <p><span className="text-slate-400">Recommendation:</span> {selectedCandidate.recommendation || 'Pending'}</p>
-              </div>
             </div>
           </div>
         </div>

@@ -1,5 +1,6 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Login from './pages/auth/Login';
+import Register from './pages/auth/Register';
 import CandidateHome from './pages/candidate/CandidateHome';
 import CandidateOnboarding from './pages/candidate/CandidateOnboarding';
 import InterviewRules from './pages/candidate/InterviewRules';
@@ -11,6 +12,8 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/home" element={<CandidateHome />} />
         <Route path="/candidate" element={<CandidateHome />} />
         <Route path="/candidate/onboarding" element={<CandidateOnboarding />} />
         <Route path="/rules/:id" element={<InterviewRules />} />
