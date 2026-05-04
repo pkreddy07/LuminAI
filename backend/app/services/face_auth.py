@@ -7,7 +7,7 @@ import os
 from dotenv import load_dotenv
 from deepface import DeepFace
 
-# Load env variables so Cloudinary can authenticate
+# Load env variables
 load_dotenv()
 
 cloudinary.config(
@@ -17,34 +17,27 @@ cloudinary.config(
 )
 
 def decode_base64_image(base64_string: str) -> np.ndarray:
-    """Converts a base64 string from the frontend webcam into an OpenCV image."""
+    """Converts a frontend base64 string into an OpenCV image."""
     if "," in base64_string:
         base64_string = base64_string.split(",")[1]
-        
     img_data = base64.b64decode(base64_string)
     np_arr = np.frombuffer(img_data, np.uint8)
-    img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    return img
+    return cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
 def get_face_vector(img: np.ndarray) -> list[float]:
-    """Locates the face and extracts a mathematical vector using DeepFace (Facenet)."""
+    """Extracts the Facenet mathematical vector from an image."""
     try:
-        # DeepFace automatically detects the face and extracts the math
-        # We use "Facenet" because it is lightweight, fast, and highly accurate
         faces = DeepFace.represent(img_path=img, model_name="Facenet", enforce_detection=True)
     except ValueError:
-        # DeepFace throws a ValueError if it can't find a face
         raise ValueError("No face detected in the image. Please adjust your lighting.")
         
-    # DeepFace returns a list of results. If the list has more than 1 item, there are multiple people!
     if len(faces) > 1:
         raise ValueError("Multiple faces detected. Please ensure only you are in the frame.")
         
-    # Extract the embedding (the mathematical vector) for the single face
     return faces[0]["embedding"]
 
 def upload_snapshot_to_cloudinary(base64_string: str) -> str:
-    """Uploads the raw webcam string directly to Cloudinary and returns the secure URL."""
+    """Uploads the raw webcam string to Cloudinary securely from the backend."""
     if not base64_string.startswith("data:image"):
         base64_string = f"data:image/jpeg;base64,{base64_string}"
         
@@ -53,3 +46,9 @@ def upload_snapshot_to_cloudinary(base64_string: str) -> str:
         folder="lumin_ai/snapshots" 
     )
     return response["secure_url"]
+
+def compare_face_vectors(reference_vector: list[float], live_vector: list[float], threshold: float = 10.0) -> bool:
+    """Compares two Facenet vectors. Distance <= 10.0 is the same person."""
+    v1 = np.array(reference_vector)
+    v2 = np.array(live_vector)
+    return bool(np.linalg.norm(v1 - v2) <= threshold)

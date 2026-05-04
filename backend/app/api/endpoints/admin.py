@@ -4,6 +4,7 @@ from typing import List
 from datetime import datetime
 from app.schemas.database import JobPosting
 from app.core.security import get_current_user
+from bson import ObjectId
 
 router = APIRouter()
 
@@ -61,3 +62,32 @@ async def get_live_jobs(request: Request, current_user: dict = Depends(get_curre
         job["_id"] = str(job["_id"])
 
     return jobs
+
+@router.get("/jobs/{job_id}/candidates")
+async def get_job_candidates(job_id: str, request: Request, current_user: dict = Depends(get_current_user)):
+    """Fetches all candidates who took a specific job interview, including their photo."""
+    
+    if current_user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only admins can view candidate reports")
+
+    db = request.app.mongodb
+    
+    # Fetch all interview attempts for this job
+    cursor = db.interview_attempts.find({"job_id": job_id})
+    attempts = await cursor.to_list(length=100)
+    
+    results = []
+    for attempt in attempts:
+        candidate = await db.users.find_one({"_id": ObjectId(attempt["candidate_id"])})
+        if not candidate:
+            continue
+            
+        results.append({
+            "attempt_id": str(attempt["_id"]),
+            "candidate_name": candidate.get("full_name", "Unknown"),
+            "candidate_email": candidate.get("email", "Unknown"),
+            "status": attempt.get("status"),
+            "snapshot_url": attempt.get("initial_snapshot_url") # The Cloudinary image for Admin HR!
+        })
+        
+    return results
