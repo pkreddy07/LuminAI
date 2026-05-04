@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from app.api.endpoints import auth
 from app.api.endpoints import admin
 from app.api.endpoints import candidate
@@ -8,6 +9,7 @@ from contextlib import asynccontextmanager
 import os
 from dotenv import load_dotenv
 import certifi
+from pathlib import Path
 
 load_dotenv()
 
@@ -42,6 +44,10 @@ async def lifespan(app: FastAPI):
     app.mongodb_client.close()
 
 app = FastAPI(title="Lumin.ai Open Marketplace", lifespan=lifespan)
+
+UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 # Essential for connecting Next.js to FastAPI
 app.add_middleware(
