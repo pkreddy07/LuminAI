@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from app.core.security import get_current_user
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional
 from bson import ObjectId
 
 router = APIRouter()
