@@ -1,191 +1,67 @@
-import { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiJson } from '../../lib/api';
-import { clearAuth, getAuth } from '../../lib/auth';
 
 export default function CandidateHome() {
   const navigate = useNavigate();
-  const auth = getAuth();
-  const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [me, setMe] = useState(null);
-  const [activeJobs, setActiveJobs] = useState([]);
-  const [recentJobs, setRecentJobs] = useState([]);
-  const [attendedJobs, setAttendedJobs] = useState([]);
+  const [tab, setTab] = useState('available');
 
-  useEffect(() => {
-    if (!auth?.token) {
-      navigate('/');
-      return;
-    }
+  const availableInterviews = [
+    { id: 101, title: 'Plumbing Technician (Level 2)', window: 'Today, 9:00 AM - 9:00 PM', duration: 'Approx 15 mins', aiMode: 'Resume + Predefined' }
+  ];
 
-    const loadData = async () => {
-      try {
-        setLoading(true);
-        setError('');
-        const query = search ? `?q=${encodeURIComponent(search)}` : '';
-
-        const [meData, active, recent, attended] = await Promise.all([
-          apiJson('/api/candidate/me', { token: auth.token }),
-          apiJson(`/api/candidate/jobs/active${query}`, { token: auth.token }),
-          apiJson(`/api/candidate/jobs/recent${query}`, { token: auth.token }),
-          apiJson(`/api/candidate/jobs/attended${query}`, { token: auth.token })
-        ]);
-
-        setMe(meData);
-        setActiveJobs(active || []);
-        setRecentJobs(recent || []);
-        setAttendedJobs(attended || []);
-      } catch (err) {
-        setError(err.message || 'Failed to load interviews');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadData();
-  }, [auth?.token, navigate, search]);
-
-  const handleLogout = () => {
-    clearAuth();
-    navigate('/');
-  };
-
-  const formatWindow = (start, end) => {
-    const startTime = new Date(start);
-    const endTime = new Date(end);
-    return `${startTime.toLocaleString()} - ${endTime.toLocaleTimeString()}`;
-  };
-
-  const profileIncomplete = !me?.profile?.district || !me?.profile?.city;
+  const completedInterviews = [
+    { id: 102, title: 'Basic Assessment', date: 'Yesterday', status: 'Analysis Complete' }
+  ];
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <header className="bg-black/40 backdrop-blur border-b border-white/5 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">Candidate hub</p>
-          <h1 className="text-lg font-semibold">Welcome, {auth?.username || 'Candidate'}</h1>
+    <div className="min-h-screen bg-gray-50">
+      <header className="bg-white shadow-sm px-4 md:px-6 py-4 flex justify-between items-center sticky top-0 z-10">
+        <h1 className="text-lg md:text-xl font-black text-gray-900">Lumin<span className="text-blue-600">.ai</span></h1>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-bold text-gray-600 hidden md:block">Welcome, Ramesh</span>
+          <button onClick={() => navigate('/')} className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded-full font-bold hover:bg-gray-200">Logout</button>
         </div>
-        <button onClick={handleLogout} className="text-xs bg-white/10 text-white px-4 py-2 rounded-full font-semibold hover:bg-white/20">
-          Log out
-        </button>
       </header>
 
-      <main className="max-w-5xl mx-auto px-6 py-10 space-y-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h2 className="text-3xl font-semibold">Available interviews</h2>
-            <p className="text-sm text-slate-300 mt-2">Search active, recent, and attended interviews.</p>
-          </div>
-          <div className="w-full md:w-80">
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search company, title, or skill"
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white"
-            />
-          </div>
+      <main className="max-w-3xl mx-auto p-4 md:p-6">
+        <h2 className="text-2xl font-black text-gray-800 mb-6">Your Dashboard</h2>
+
+        <div className="flex gap-6 border-b border-gray-200 mb-6">
+          <button onClick={() => setTab('available')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${tab === 'available' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>
+            Available Interviews
+          </button>
+          <button onClick={() => setTab('completed')} className={`pb-3 text-sm font-bold border-b-2 transition-colors ${tab === 'completed' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>
+            Finished Interviews
+          </button>
         </div>
 
-        {profileIncomplete && (
-          <div className="bg-amber-400/10 border border-amber-300/20 rounded-2xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <p className="font-semibold">Complete your profile</p>
-              <p className="text-sm text-amber-100">District and city are required before joining interviews.</p>
+        <div className="space-y-4">
+          {tab === 'available' && availableInterviews.map(i => (
+            <div key={i.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col sm:flex-row justify-between gap-4 border-l-4 border-l-blue-500">
+              <div>
+                <h3 className="font-bold text-lg text-gray-900">{i.title}</h3>
+                <p className="text-sm text-gray-500 mt-1">🕒 Window: {i.window}</p>
+                <p className="text-sm text-gray-500">⏳ Duration: {i.duration}</p>
+                <span className="inline-block mt-3 text-xs font-bold bg-indigo-50 text-indigo-700 px-2 py-1 rounded-md">
+                  AI: {i.aiMode}
+                </span>
+              </div>
+              <button onClick={() => navigate(`/rules/${i.id}`)} className="bg-blue-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-blue-700 h-fit w-full sm:w-auto self-start sm:self-center">
+                Select & Join
+              </button>
             </div>
-            <button
-              onClick={() => navigate('/candidate/onboarding')}
-              className="bg-amber-300 text-slate-950 font-semibold px-4 py-2 rounded-full"
-            >
-              Update profile
-            </button>
-          </div>
-        )}
+          ))}
 
-        {loading && <p className="text-sm text-slate-400">Loading interviews...</p>}
-        {error && <p className="text-sm text-rose-300">{error}</p>}
-
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xl font-semibold">Active now</h3>
-            <span className="text-xs text-slate-400">{activeJobs.length} live</span>
-          </div>
-          <div className="grid gap-4">
-            {activeJobs.length === 0 && !loading && (
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-sm text-slate-300">
-                No active interviews right now.
+          {tab === 'completed' && completedInterviews.map(i => (
+            <div key={i.id} className="bg-gray-100 p-5 rounded-2xl border border-gray-200 flex justify-between items-center opacity-80">
+              <div>
+                <h3 className="font-bold text-gray-700">{i.title}</h3>
+                <p className="text-sm text-gray-500 mt-1">Finished on {i.date}</p>
               </div>
-            )}
-            {activeJobs.map((job) => (
-              <div key={job._id} className="bg-white/5 border border-emerald-300/10 rounded-2xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-emerald-200">{job.organization_name}</p>
-                  <h4 className="text-lg font-semibold mt-1">{job.title}</h4>
-                  <p className="text-sm text-slate-300 mt-2">Window: {formatWindow(job.start_time, job.end_time)}</p>
-                  {job.skills?.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {job.skills.map((skill) => (
-                        <span key={skill} className="text-xs bg-white/10 px-2 py-1 rounded-full">{skill}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <button
-                  onClick={() => navigate(`/interview/${job._id}`)}
-                  disabled={job.has_attended || profileIncomplete}
-                  className="bg-emerald-400 text-slate-950 font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-300 disabled:opacity-50"
-                >
-                  {profileIncomplete ? 'Complete profile first' : job.has_attended ? 'Already attended' : 'Start interview'}
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xl font-semibold">Recently ended</h3>
-            <span className="text-xs text-slate-400">Last 24 hours</span>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {recentJobs.length === 0 && !loading && (
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-sm text-slate-300">
-                No interviews ended in the last 24 hours.
-              </div>
-            )}
-            {recentJobs.map((job) => (
-              <div key={job._id} className="bg-white/5 border border-white/10 rounded-2xl p-5">
-                <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{job.organization_name}</p>
-                <h4 className="text-lg font-semibold mt-1">{job.title}</h4>
-                <p className="text-sm text-slate-300 mt-2">Ended: {new Date(job.end_time).toLocaleString()}</p>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xl font-semibold">Attended interviews</h3>
-            <span className="text-xs text-slate-400">Your history</span>
-          </div>
-          <div className="grid gap-4">
-            {attendedJobs.length === 0 && !loading && (
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 text-sm text-slate-300">
-                You have not attended any interviews yet.
-              </div>
-            )}
-            {attendedJobs.map((job) => (
-              <div key={job._id} className="bg-white/5 border border-white/10 rounded-2xl p-5 flex items-center justify-between">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">{job.organization_name}</p>
-                  <h4 className="text-lg font-semibold mt-1">{job.title}</h4>
-                </div>
-                <span className="text-xs bg-emerald-400/20 text-emerald-200 px-3 py-1 rounded-full">Attended</span>
-              </div>
-            ))}
-          </div>
-        </section>
+              <span className="text-xs font-bold text-green-700 bg-green-100 px-3 py-1 rounded-full">{i.status}</span>
+            </div>
+          ))}
+        </div>
       </main>
     </div>
   );

@@ -44,9 +44,6 @@ class CandidateProfile(BaseModel):
     user_id: str 
     district: Optional[str] = None
     city: Optional[str] = None
-    language: Optional[str] = None
-    primary_skill: Optional[str] = None
-    skills: List[str] = []
     category: Optional[str] = None 
     resume_url: Optional[str] = None
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -62,7 +59,6 @@ class JobPosting(BaseModel):
     organization_name: str
     title: str
     job_description: str
-    skills: List[str] = []
     preferred_questions: List[str] = []
     ask_category: bool = False 
     start_time: datetime
@@ -81,13 +77,6 @@ class InterviewAttempt(BaseModel):
     job_id: str 
     initial_snapshot_url: Optional[str] = None 
     status: str = Field(default="In-Progress") 
-    confidence_score: Optional[float] = None
-    communication_score: Optional[float] = None
-    body_language_score: Optional[float] = None
-    overall_score: Optional[float] = None
-    recommendation: Optional[str] = None
-    integrity_match: Optional[bool] = None
-    integrity_score: Optional[float] = None
     overall_semantic_score: Optional[float] = None
     overall_integrity_score: Optional[float] = None
     started_at: datetime = Field(default_factory=datetime.utcnow)
@@ -106,22 +95,6 @@ class InterviewTurn(BaseModel):
     candidate_transcript: str 
     ai_question_text: str 
     semantic_score: Optional[float] = None 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-    model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
-
-# ---------------------------------------------------------
-# 6. OTP REQUESTS COLLECTION
-# ---------------------------------------------------------
-class OtpRequest(BaseModel):
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    contact: str
-    channel: str = Field(..., description="'email' or 'phone'")
-    role: str = Field(..., description="'admin' or 'candidate'")
-    otp_hash: str
-    expires_at: datetime
-    attempts: int = 0
-    verified: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     model_config = ConfigDict(populate_by_name=True, arbitrary_types_allowed=True)
