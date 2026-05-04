@@ -6,5 +6,12 @@ pydantic-settings
 pydantic[email]
 python-jose[cryptography]
 passlib[bcrypt]
+argon2-cffi
 python-multipart
 python-dotenv
+certifi
+numpy
+opencv-python
+deepface
+tf-keras
+cloudinary

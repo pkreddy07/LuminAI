@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from app.api.endpoints import auth
 from app.api.endpoints import admin
 from app.api.endpoints import candidate
+from app.api.endpoints import interview
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from contextlib import asynccontextmanager
@@ -39,6 +40,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin Dashboard"])
 app.include_router(candidate.router, prefix="/api/candidate", tags=["Candidate Marketplace"])
+app.include_router(interview.router, prefix="/api/interview", tags=["Interview Room"])
 
 @app.get("/")
 async def root():
