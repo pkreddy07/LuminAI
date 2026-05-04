@@ -38,6 +38,17 @@ class OtpVerifyPayload(BaseModel):
 def _generate_otp() -> str:
     return f"{random.randint(0, 999999):06d}"
 
+def _allow_dev_otp() -> bool:
+    env_override = os.getenv("ALLOW_DEV_OTP")
+    if env_override is not None:
+        return env_override.lower() in {"1", "true", "yes"}
+
+    # Default to dev OTP when SMTP is not configured (local/dev mode).
+    host = os.getenv("SMTP_HOST")
+    user = os.getenv("SMTP_USER")
+    password = os.getenv("SMTP_PASSWORD")
+    return not (host and user and password)
+
 def _send_otp_email(to_email: str, otp: str):
     host = os.getenv("SMTP_HOST")
     port = int(os.getenv("SMTP_PORT", "587"))
@@ -151,14 +162,15 @@ async def request_otp(request: Request, payload: OtpRequestPayload):
 
     await db.otp_requests.insert_one(otp_doc.model_dump(by_alias=True, exclude={"id"}))
 
+    if _allow_dev_otp():
+        return {"message": "OTP generated", "is_new": is_new, "dev_otp": otp}
+
     if channel == "email":
         try:
             _send_otp_email(contact, otp)
         except RuntimeError as exc:
             raise HTTPException(status_code=500, detail=str(exc))
     else:
-        if os.getenv("ALLOW_DEV_OTP", "false").lower() == "true":
-            return {"message": "OTP generated", "is_new": is_new, "dev_otp": otp}
         raise HTTPException(status_code=501, detail="SMS provider not configured")
 
     return {"message": "OTP sent", "is_new": is_new}

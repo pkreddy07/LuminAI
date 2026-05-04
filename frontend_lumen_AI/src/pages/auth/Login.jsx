@@ -40,9 +40,15 @@ export default function Login() {
         body: payload
       });
 
-      setIsNew(Boolean(response.is_new));
+      const isNewUser = Boolean(response.is_new);
+      setIsNew(isNewUser);
       if (response.dev_otp) {
+        setOtp(response.dev_otp);
         setInfo(`Dev OTP: ${response.dev_otp}`);
+        if (!isNewUser) {
+          await verifyOtp(response.dev_otp);
+          return;
+        }
       }
       setStep('otp');
     } catch (err) {
@@ -52,10 +58,11 @@ export default function Login() {
     }
   };
 
-  const verifyOtp = async () => {
+  const verifyOtp = async (overrideOtp) => {
     setError('');
     setInfo('');
-    if (!otp.trim()) {
+    const otpValue = typeof overrideOtp === 'string' ? overrideOtp.trim() : otp.trim();
+    if (!otpValue) {
       setError('Enter the OTP sent to you.');
       return;
     }
@@ -67,8 +74,8 @@ export default function Login() {
     try {
       setLoading(true);
       const payload = channel === 'email' || role === 'admin'
-        ? { email: contact.trim(), role, otp: otp.trim(), username: isNew ? username.trim() : undefined }
-        : { phone_number: contact.trim(), role, otp: otp.trim(), username: isNew ? username.trim() : undefined };
+        ? { email: contact.trim(), role, otp: otpValue, username: isNew ? username.trim() : undefined }
+        : { phone_number: contact.trim(), role, otp: otpValue, username: isNew ? username.trim() : undefined };
 
       const response = await apiJson('/api/auth/verify-otp', {
         method: 'POST',
@@ -218,7 +225,7 @@ export default function Login() {
             ) : (
               <div className="space-y-3">
                 <button
-                  onClick={verifyOtp}
+                  onClick={() => verifyOtp()}
                   disabled={loading}
                   className="w-full bg-emerald-400 text-slate-950 font-semibold py-3 rounded-xl hover:bg-emerald-300 transition disabled:opacity-60"
                 >
