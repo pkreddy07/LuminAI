@@ -1,6 +1,9 @@
 import React, { useRef, useEffect, useState } from 'react';
+import { apiJson } from '../lib/api';
+import { getAuth } from '../lib/auth';
 
-export default function InterviewCamera() {
+export default function InterviewCamera({ attemptId }) {
+  const auth = getAuth();
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   
@@ -10,7 +13,6 @@ export default function InterviewCamera() {
   const [cameraError, setCameraError] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
 
-  // Demo Processing States
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState('');
   const [finalScore, setFinalScore] = useState(null);
@@ -49,9 +51,9 @@ export default function InterviewCamera() {
 
   const handleStartCaptureClick = React.useCallback(() => {
     setIsRecording(true);
-    setRecordedChunks([]); // Clear previous recording chunks
-    setVideoUrl(null);     // Clear previous video player
-    setFinalScore(null);   // Clear previous AI scores
+    setRecordedChunks([]);
+    setVideoUrl(null);
+    setFinalScore(null);
     
     const stream = videoRef.current.srcObject;
     if (!stream) return;
@@ -75,75 +77,115 @@ export default function InterviewCamera() {
     }
   }, [recordedChunks, isRecording]);
 
-  const handleSubmitToAI = () => {
+  useEffect(() => {
+    if (isRecording && attemptId) {
+      const verifyFace = async (blob) => {
+        try {
+          const formData = new FormData();
+          formData.append('attempt_id', attemptId);
+          formData.append('snapshot', blob, 'verify.jpg');
+          await apiJson('/api/candidate/interviews/verify-face', {
+            method: 'POST',
+            token: auth?.token,
+            isForm: true,
+            body: formData
+          });
+        } catch (err) {
+          console.error('Face match error', err);
+        }
+      };
+
+      const timer = setTimeout(() => {
+        if (!videoRef.current) return;
+        const canvas = document.createElement('canvas');
+        canvas.width = videoRef.current.videoWidth;
+        canvas.height = videoRef.current.videoHeight;
+        canvas.getContext('2d').drawImage(videoRef.current, 0, 0);
+        canvas.toBlob(verifyFace, 'image/jpeg');
+      }, 7000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isRecording, attemptId, auth?.token]);
+
+  const handleSubmitToAI = async () => {
     setIsProcessing(true);
     setProcessingStep('Extracting Audio & Video Sync...');
+    
     setTimeout(() => setProcessingStep('Transcribing dialect via Bhashini...'), 1500);
-    setTimeout(() => setProcessingStep('RAG Search against Skill DB...'), 3500);
-    setTimeout(() => setProcessingStep('Evaluating Confidence & Clarity...'), 5000);
-    setTimeout(() => {
-      setProcessingStep('Complete');
-      setFinalScore({ score: 88, fitment: 'Deployment-Ready' });
+    setTimeout(() => setProcessingStep('Evaluating answers...'), 3500);
+    
+    try {
+      const formData = new FormData();
+      if (attemptId) formData.append('attempt_id', attemptId);
+      await apiJson('/api/candidate/interviews/complete', {
+        method: 'POST',
+        token: auth?.token,
+        isForm: true,
+        body: formData
+      });
+      
+      setTimeout(() => {
+        setProcessingStep('Complete');
+        setFinalScore(true);
+        setIsProcessing(false);
+      }, 5000);
+    } catch (err) {
+      console.error(err);
       setIsProcessing(false);
-    }, 6500);
+    }
   };
 
   return (
     <div className="w-full flex flex-col items-center gap-6 pb-10">
       
-      {/* Main Camera Box - Now ALWAYS visible */}
-      <div className={`relative w-full max-w-md mx-auto bg-gray-900 rounded-3xl overflow-hidden shadow-2xl transition-all duration-500 flex items-center justify-center border-4 ${isRecording ? 'border-red-500' : 'border-gray-800'} ${videoUrl ? 'min-h-[250px]' : 'min-h-[400px]'}`}>
+      <div className={`relative w-full max-w-md mx-auto bg-black rounded-[32px] overflow-hidden shadow-2xl transition-all duration-500 flex items-center justify-center border ${isRecording ? 'border-rose-500' : 'border-white/10'} ${videoUrl ? 'min-h-[250px]' : 'min-h-[400px]'}`}>
         
         {cameraError ? (
-          <div className="text-red-400 font-medium p-6 text-center">{cameraError}</div>
+          <div className="text-rose-400 font-medium p-6 text-center">{cameraError}</div>
         ) : (
           <video ref={videoRef} className="w-full h-full object-cover absolute inset-0" playsInline autoPlay muted />
         )}
         
-        {/* Top Overlays */}
         {!cameraError && (
           <div className="absolute top-4 left-4 right-4 flex justify-between items-center z-10">
-            <span className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-wide shadow-lg backdrop-blur-md ${
-              livenessStatus.includes('Live') ? 'bg-green-500/80 text-white' : 'bg-red-500/80 text-white'
+            <span className={`px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide shadow-lg backdrop-blur-md ${
+              livenessStatus.includes('Live') ? 'bg-emerald-500/80 text-white' : 'bg-rose-500/80 text-white'
             }`}>
               {livenessStatus}
             </span>
             
             {isRecording && (
               <div className="flex items-center gap-2 bg-black/50 px-3 py-1.5 rounded-full backdrop-blur-md">
-                <div className="w-2.5 h-2.5 bg-red-500 rounded-full animate-pulse" />
-                <span className="text-xs font-bold text-white tracking-widest">REC</span>
+                <div className="w-2.5 h-2.5 bg-rose-500 rounded-full animate-pulse" />
+                <span className="text-xs font-semibold text-white tracking-widest">REC</span>
               </div>
             )}
           </div>
         )}
 
-        {/* Bottom Controls */}
         <div className="absolute bottom-6 left-0 right-0 flex justify-center z-10">
           {isRecording ? (
-            <button onClick={handleStopCaptureClick} className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center border-2 border-red-500 backdrop-blur-sm animate-pulse">
-              <div className="w-6 h-6 bg-red-500 rounded-sm" /> {/* Square stop icon */}
+            <button onClick={handleStopCaptureClick} className="w-16 h-16 bg-rose-500/20 rounded-full flex items-center justify-center border-2 border-rose-500 backdrop-blur-sm animate-pulse">
+              <div className="w-6 h-6 bg-rose-500 rounded-sm" />
             </button>
           ) : (
-            <button onClick={handleStartCaptureClick} className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center border-4 border-white backdrop-blur-sm hover:scale-105 transition-transform shadow-xl">
-              <div className="w-10 h-10 bg-red-500 rounded-full" /> {/* Circle record icon */}
+            <button onClick={handleStartCaptureClick} className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center border-2 border-white/60 backdrop-blur-sm hover:scale-105 transition-transform shadow-xl">
+              <div className="w-10 h-10 bg-rose-500 rounded-full" />
             </button>
           )}
         </div>
       </div>
 
-      {/* Helper text for multiple attempts */}
       {videoUrl && !isRecording && !finalScore && (
-        <p className="text-sm font-bold text-gray-500 animate-bounce">↓ Review below or hit record again to retake ↓</p>
+        <p className="text-sm font-semibold text-slate-400 animate-bounce">↓ Review below or hit record again to retake ↓</p>
       )}
 
-      {/* Review & Submit Section */}
       {videoUrl && !isRecording && !finalScore && (
-        <div className="w-full max-w-md bg-white p-6 rounded-3xl shadow-xl border border-gray-100 flex flex-col gap-4 animate-fade-in-up">
-          <h3 className="text-lg font-bold text-gray-800">Review Your Answer</h3>
+        <div className="w-full max-w-md bg-white/5 border border-white/10 p-6 rounded-[32px] shadow-xl flex flex-col gap-4 animate-fade-in-up">
+          <h3 className="text-lg font-semibold text-white">Review Your Answer</h3>
           
-          {/* Native Video Player with controlsList="nodownload" */}
-          <div className="w-full rounded-2xl overflow-hidden bg-black shadow-inner">
+          <div className="w-full rounded-2xl overflow-hidden bg-black shadow-inner border border-white/10">
             <video 
               src={videoUrl} 
               className="w-full h-auto max-h-[300px] object-contain" 
@@ -154,33 +196,27 @@ export default function InterviewCamera() {
           </div>
           
           {isProcessing ? (
-            <div className="mt-2 bg-blue-50 border border-blue-100 p-4 rounded-xl flex items-center gap-3">
-              <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-sm font-semibold text-blue-700">{processingStep}</span>
+            <div className="mt-2 bg-emerald-400/10 border border-emerald-400/20 p-4 rounded-xl flex items-center gap-3">
+              <div className="w-5 h-5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm font-semibold text-emerald-200">{processingStep}</span>
             </div>
           ) : (
-            <button onClick={handleSubmitToAI} className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:opacity-90 transition-all">
-              Submit to Lumin.ai ✨
+            <button onClick={handleSubmitToAI} className="w-full bg-emerald-400 text-slate-950 py-4 rounded-xl font-semibold shadow-lg hover:bg-emerald-300 transition-all">
+              Submit Answer
             </button>
           )}
         </div>
       )}
 
-      {/* Final Results State */}
       {finalScore && (
-        <div className="w-full max-w-md bg-gradient-to-br from-green-50 to-emerald-50 p-8 rounded-3xl shadow-xl border border-green-100 text-center relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-green-400/10 rounded-full blur-3xl" />
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7"/></svg>
+        <div className="w-full max-w-md bg-emerald-400/10 p-8 rounded-[32px] shadow-xl border border-emerald-400/20 text-center">
+          <div className="w-20 h-20 bg-emerald-400/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <span className="text-3xl">✨</span>
           </div>
-          <h2 className="text-2xl font-black text-gray-800 mb-2">Assessment Scored!</h2>
-          <div className="bg-white py-4 px-6 rounded-2xl shadow-sm inline-block mb-6">
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Fitment Status</p>
-            <p className="text-lg font-black text-green-600">{finalScore.fitment}</p>
-            <p className="text-sm font-medium text-gray-500 mt-2">Confidence: <span className="font-bold text-gray-800">{finalScore.score}%</span></p>
-          </div>
-          <button onClick={() => window.location.href='/admin'} className="block w-full text-center text-indigo-600 font-bold hover:underline">
-            View in Admin Dashboard →
+          <h2 className="text-2xl font-semibold text-white mb-2">Interview Completed</h2>
+          <p className="text-sm text-slate-300 mb-6">Your responses have been successfully submitted to the AI agent for analysis. You may now close this window.</p>
+          <button onClick={() => window.location.href='/home'} className="block w-full text-center text-emerald-400 font-semibold hover:text-emerald-300">
+            Return to Dashboard →
           </button>
         </div>
       )}

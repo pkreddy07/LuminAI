@@ -228,6 +228,8 @@ async def get_job_candidates(
             "primary_skill": profile_doc.get("primary_skill"),
             "skills": profile_doc.get("skills", []),
             "category": profile_doc.get("category"),
+            "resume_url": profile_doc.get("resume_url"),
+            "initial_snapshot_url": attempt.get("initial_snapshot_url"),
             "recommendation": attempt.get("recommendation"),
             "confidence_score": attempt.get("confidence_score"),
             "communication_score": attempt.get("communication_score"),
