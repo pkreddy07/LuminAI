@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, UploadFile, File, Form
+from pydantic import BaseModel
 from app.core.security import get_current_user
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 from bson import ObjectId
 from pathlib import Path
 from uuid import uuid4
@@ -280,6 +281,7 @@ async def verify_face(
 async def complete_interview(
     request: Request,
     attempt_id: str = Form(...),
+    video: UploadFile = File(None),
     current_user: dict = Depends(get_current_user)
 ):
     if current_user["role"] != "candidate":
@@ -295,10 +297,61 @@ async def complete_interview(
     if attempt.get("candidate_id") != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="Not allowed")
 
-    scores = _score_attempt(attempt_id)
+    scores = {
+        "confidence_score": 0,
+        "communication_score": 0,
+        "body_language_score": 0,
+        "overall_score": 0,
+        "recommendation": "Needs Training"
+    }
+
+    if video:
+        from app.services.llm_evaluator import analyze_interview_video
+        video_path = await _save_upload_file(video, SNAPSHOT_DIR)
+        full_path = SNAPSHOT_DIR / Path(video_path).name
+        scores = await analyze_interview_video(str(full_path))
+    else:
+        # Fallback to mock if no video is provided for some reason
+        scores = _score_attempt(attempt_id)
+
     await db.interview_attempts.update_one(
         {"_id": ObjectId(attempt_id)},
         {"$set": {**scores, "status": "Completed", "completed_at": datetime.utcnow()}}
     )
 
     return {"message": "Interview completed", "scores": scores}
+
+class ChatMessage(BaseModel):
+    role: str
+    text: str
+
+class ChatRequest(BaseModel):
+    attempt_id: str
+    message: str
+    history: List[ChatMessage]
+
+@router.post("/interviews/chat")
+async def chat_interview(
+    request: Request,
+    payload: ChatRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    if current_user["role"] != "candidate":
+        raise HTTPException(status_code=403)
+
+    db = request.app.mongodb
+    if not ObjectId.is_valid(payload.attempt_id):
+        raise HTTPException(status_code=400, detail="Invalid attempt id")
+
+    attempt = await db.interview_attempts.find_one({"_id": ObjectId(payload.attempt_id)})
+    if not attempt or attempt.get("candidate_id") != current_user["user_id"]:
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    formatted_history = []
+    for msg in payload.history:
+        formatted_history.append({"role": msg.role, "parts": [msg.text]})
+
+    from app.services.llm_evaluator import generate_next_question
+    result = await generate_next_question(formatted_history, payload.message)
+
+    return result

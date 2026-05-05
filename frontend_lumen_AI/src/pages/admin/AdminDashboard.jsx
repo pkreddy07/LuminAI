@@ -26,6 +26,7 @@ export default function AdminDashboard() {
   const [filters, setFilters] = useState({ district: '', skill: '', language: '', category: '', q: '' });
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [scheduleData, setScheduleData] = useState(emptySchedule);
+  const [viewCandidate, setViewCandidate] = useState(null);
 
   useEffect(() => {
     if (!auth?.token) {
@@ -131,6 +132,8 @@ export default function AdminDashboard() {
     }
   };
 
+  const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       <div className="flex flex-col lg:flex-row">
@@ -159,7 +162,7 @@ export default function AdminDashboard() {
             </div>
             <button
               onClick={() => setShowScheduleModal(true)}
-              className="bg-emerald-400 text-slate-950 font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-300"
+              className="bg-emerald-400 text-slate-950 font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-300 transition"
             >
               + Schedule interview
             </button>
@@ -212,7 +215,7 @@ export default function AdminDashboard() {
                   onClick={() => setSelectedJob(job)}
                   className={`text-left rounded-2xl p-5 border transition ${
                     selectedJob?._id === job._id
-                      ? 'border-emerald-400/60 bg-emerald-400/10'
+                      ? 'border-emerald-400/60 bg-emerald-400/10 shadow-[0_0_15px_rgba(52,211,153,0.1)]'
                       : 'border-white/10 bg-white/5 hover:border-emerald-300/40'
                   }`}
                 >
@@ -260,7 +263,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4 shadow-xl">
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                   <div>
                     <h4 className="text-lg font-semibold">Candidate list</h4>
@@ -305,7 +308,7 @@ export default function AdminDashboard() {
                 ) : (
                   <div className="grid gap-4">
                     {candidates.map((candidate) => (
-                      <div key={candidate.candidate_id} className="bg-black/40 border border-white/10 rounded-2xl p-4">
+                      <div key={candidate.candidate_id} className="bg-black/40 border border-white/10 rounded-2xl p-4 hover:border-white/20 transition">
                         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                           <div>
                             <p className="text-sm font-semibold">{candidate.username || 'Candidate'}</p>
@@ -317,6 +320,12 @@ export default function AdminDashboard() {
                             <span className="bg-emerald-400/20 text-emerald-200 px-3 py-1 rounded-full">
                               {candidate.recommendation || 'Pending'}
                             </span>
+                            <button
+                              onClick={() => setViewCandidate(candidate)}
+                              className="bg-emerald-400 text-slate-950 px-4 py-1.5 rounded-full font-semibold hover:bg-emerald-300 transition"
+                            >
+                              View Info
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -331,7 +340,7 @@ export default function AdminDashboard() {
 
       {showScheduleModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center px-4 z-40">
-          <div className="bg-slate-900 border border-white/10 rounded-3xl w-full max-w-2xl p-6 space-y-5">
+          <div className="bg-slate-900 border border-white/10 rounded-3xl w-full max-w-2xl p-6 space-y-5 shadow-2xl">
             <div className="flex items-center justify-between">
               <h3 className="text-xl font-semibold">Schedule interview window</h3>
               <button
@@ -416,6 +425,101 @@ export default function AdminDashboard() {
                 className="bg-emerald-400 text-slate-950 px-4 py-2 rounded-xl font-semibold"
               >
                 Create window
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {viewCandidate && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center px-4 z-50">
+          <div className="bg-slate-900 border border-white/10 rounded-[32px] w-full max-w-3xl p-8 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <div className="flex items-start justify-between mb-8">
+              <div className="flex items-center gap-6">
+                <div className="w-24 h-24 bg-black/50 border border-white/10 rounded-2xl overflow-hidden shrink-0">
+                  {viewCandidate.initial_snapshot_url ? (
+                    <img
+                      src={`${apiBase}${viewCandidate.initial_snapshot_url}`}
+                      alt="Candidate snapshot"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs">No image</div>
+                  )}
+                </div>
+                <div>
+                  <h3 className="text-2xl font-semibold text-white">{viewCandidate.username || 'Candidate'}</h3>
+                  <p className="text-slate-400 text-sm mt-1">{viewCandidate.email || viewCandidate.phone_number}</p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs bg-emerald-400/20 text-emerald-200 px-3 py-1 rounded-full border border-emerald-400/20">
+                      {viewCandidate.recommendation || 'Pending'}
+                    </span>
+                    {viewCandidate.integrity_match === false && (
+                      <span className="text-xs bg-rose-400/20 text-rose-200 px-3 py-1 rounded-full border border-rose-400/20">
+                        Face Mismatch Flag
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => setViewCandidate(null)}
+                className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center text-slate-300 hover:bg-white/20 hover:text-white transition"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-6 mb-8">
+              <div className="space-y-4 text-sm">
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-slate-500">Location</p>
+                  <p className="font-medium text-slate-200 mt-1">{viewCandidate.district || 'NA'} · {viewCandidate.city || 'NA'}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-slate-500">Language</p>
+                  <p className="font-medium text-slate-200 mt-1">{viewCandidate.language || 'NA'}</p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-slate-500">Category</p>
+                  <p className="font-medium text-slate-200 mt-1">{viewCandidate.category || 'NA'}</p>
+                </div>
+                {viewCandidate.resume_url && (
+                  <div>
+                    <a href={`${apiBase}${viewCandidate.resume_url}`} target="_blank" rel="noreferrer" className="text-emerald-400 font-semibold hover:text-emerald-300 underline">
+                      View Resume
+                    </a>
+                  </div>
+                )}
+              </div>
+              
+              <div className="space-y-4 text-sm bg-black/40 border border-white/5 rounded-2xl p-5">
+                <p className="text-xs uppercase tracking-widest text-slate-500 mb-2">Performance Scores</p>
+                <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                  <span className="text-slate-300">Confidence</span>
+                  <span className="font-semibold text-white">{viewCandidate.confidence_score ?? 'NA'}</span>
+                </div>
+                <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                  <span className="text-slate-300">Communication</span>
+                  <span className="font-semibold text-white">{viewCandidate.communication_score ?? 'NA'}</span>
+                </div>
+                <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                  <span className="text-slate-300">Body Language</span>
+                  <span className="font-semibold text-white">{viewCandidate.body_language_score ?? 'NA'}</span>
+                </div>
+                <div className="flex justify-between items-center pt-1">
+                  <span className="text-slate-300 font-semibold">Overall</span>
+                  <span className="text-lg font-bold text-emerald-400">{viewCandidate.overall_score ?? 'NA'}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-right">
+              <button
+                onClick={() => setViewCandidate(null)}
+                className="bg-white/10 text-white px-6 py-2.5 rounded-full font-semibold hover:bg-white/20 transition"
+              >
+                Close Details
               </button>
             </div>
           </div>

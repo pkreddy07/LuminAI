@@ -84,13 +84,32 @@ async def get_job_candidates(job_id: str, request: Request, current_user: dict =
         candidate = await db.users.find_one({"_id": ObjectId(attempt["candidate_id"])})
         if not candidate:
             continue
-            
-        results.append({
-            "attempt_id": str(attempt["_id"]),
-            "candidate_name": candidate.get("full_name", "Unknown"),
-            "candidate_email": candidate.get("email", "Unknown"),
-            "status": attempt.get("status"),
-            "snapshot_url": attempt.get("initial_snapshot_url") # The Cloudinary image for Admin HR!
+        profile_doc = profile_map.get(attempt.get("candidate_id"), {})
+        if not _matches(profile_doc, user_doc):
+            continue
+
+        payload.append({
+            "candidate_id": attempt.get("candidate_id"),
+            "username": user_doc.get("username"),
+            "email": user_doc.get("email"),
+            "phone_number": user_doc.get("phone_number"),
+            "district": profile_doc.get("district"),
+            "city": profile_doc.get("city"),
+            "language": profile_doc.get("language"),
+            "primary_skill": profile_doc.get("primary_skill"),
+            "skills": profile_doc.get("skills", []),
+            "category": profile_doc.get("category"),
+            "resume_url": profile_doc.get("resume_url"),
+            "initial_snapshot_url": attempt.get("initial_snapshot_url"),
+            "recommendation": attempt.get("recommendation"),
+            "confidence_score": attempt.get("confidence_score"),
+            "communication_score": attempt.get("communication_score"),
+            "body_language_score": attempt.get("body_language_score"),
+            "overall_score": attempt.get("overall_score"),
+            "integrity_match": attempt.get("integrity_match"),
+            "integrity_score": attempt.get("integrity_score"),
+            "started_at": attempt.get("started_at"),
+            "completed_at": attempt.get("completed_at")
         })
         
     return results
