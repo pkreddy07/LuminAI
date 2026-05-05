@@ -26,10 +26,12 @@ def _resolve_mongo_client_kwargs(mongo_url: str) -> dict:
         use_tls = mongo_url.startswith("mongodb+srv://")
 
     kwargs = {
-        "serverSelectionTimeoutMS": 30000,
-        "connectTimeoutMS": 30000,
+        "serverSelectionTimeoutMS": 60000,
+        "connectTimeoutMS": 60000,
+        "socketTimeoutMS": 60000,
         "retryWrites": True,
         "maxPoolSize": 10,
+        "minPoolSize": 1,
     }
 
     if use_tls:

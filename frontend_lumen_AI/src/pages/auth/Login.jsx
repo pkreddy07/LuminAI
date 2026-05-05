@@ -44,7 +44,6 @@ export default function Login() {
       setIsNew(isNewUser);
       if (response.dev_otp) {
         setOtp(response.dev_otp);
-        setInfo(`Dev OTP: ${response.dev_otp}`);
         if (!isNewUser) {
           await verifyOtp(response.dev_otp);
           return;
