@@ -2,9 +2,7 @@ from fastapi import APIRouter, HTTPException, status, Request
 from pydantic import BaseModel, EmailStr
 from app.schemas.database import User, CandidateProfile, OtpRequest
 from app.core.security import get_password_hash, verify_password, create_access_token
-from app.services.email_service import generate_otp, send_otp_email
 from datetime import timedelta, datetime
-from email.message import EmailMessage
 from typing import Optional
 import os
 import random
@@ -15,14 +13,10 @@ router = APIRouter()
 
 # Payloads expected from the Frontend
 class UserRegister(BaseModel):
-    email: str # Can be modified later to accept phone numbers too
+    email: str
     password: str
     role: str # 'admin' or 'candidate'
     username: str
-
-class UserLogin(BaseModel):
-    email: str
-    password: str
 
 class OtpRequestPayload(BaseModel):
     email: Optional[EmailStr] = None
@@ -114,30 +108,7 @@ async def register(request: Request, user_data: UserRegister):
 
     return {"message": "User created successfully", "user_id": user_id, "role": user_data.role}
 
-@router.post("/login")
-async def login(request: Request, user_data: UserLogin):
-    db = request.app.mongodb
 
-    # 1. Find user in database
-    db_user = await db.users.find_one({"email": user_data.email})
-
-    # 2. Verify password
-    if not db_user or not verify_password(user_data.password, db_user["hashed_password"]):
-        raise HTTPException(status_code=401, detail="Incorrect email or password")
-
-    # 3. Generate JWT Token
-    access_token_expires = timedelta(minutes=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 1440)))
-    access_token = create_access_token(
-        data={
-            "sub": db_user["email"],
-            "role": db_user["role"],
-            "user_id": str(db_user["_id"])
-        },
-        expires_delta=access_token_expires
-    )
-
-    # Return the token to the frontend
-    return {"access_token": access_token, "token_type": "bearer", "role": db_user["role"], "username": db_user["username"]}
 
 @router.post("/request-otp")
 async def request_otp(request: Request, payload: OtpRequestPayload):
@@ -250,69 +221,3 @@ async def verify_otp(request: Request, payload: OtpVerifyPayload):
         "profile_complete": profile_complete
     }
 
-# ---------------------------------------------------------
-# OTP SCHEMAS
-# ---------------------------------------------------------
-class SendOTPRequest(BaseModel):
-    email: EmailStr
-
-class VerifyOTPRequest(BaseModel):
-    email: EmailStr
-    otp: str
-
-# ---------------------------------------------------------
-# OTP ROUTES
-# ---------------------------------------------------------
-@router.post("/send-otp", status_code=200)
-async def send_otp(request: Request, payload: SendOTPRequest):
-    db = request.app.mongodb
-    
-    # 1. Generate the 6-digit code
-    otp_code = generate_otp()
-    
-    # 2. Set an expiration time (5 minutes from now)
-    expire_at = datetime.utcnow() + timedelta(minutes=5)
-    
-    # 3. Save to MongoDB 
-    # (We use upsert=True so if they request it twice, it overwrites the old code)
-    await db.otps.update_one(
-        {"email": payload.email},
-        {"$set": {"otp": otp_code, "expire_at": expire_at}},
-        upsert=True
-    )
-    
-    # 4. Send the actual email
-    try:
-        send_otp_email(payload.email, otp_code)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-        
-    return {"message": "OTP sent successfully. Please check your inbox."}
-
-
-@router.post("/verify-otp", status_code=200)
-async def verify_otp(request: Request, payload: VerifyOTPRequest):
-    db = request.app.mongodb
-    
-    # 1. Look up the OTP for this email
-    record = await db.otps.find_one({"email": payload.email})
-    
-    if not record:
-        raise HTTPException(status_code=400, detail="No OTP requested for this email.")
-        
-    # 2. Check if it expired
-    if record["expire_at"] < datetime.utcnow():
-        # Clean up the expired record
-        await db.otps.delete_one({"email": payload.email})
-        raise HTTPException(status_code=400, detail="OTP has expired. Please request a new one.")
-        
-    # 3. Check if the code matches
-    if record["otp"] != payload.otp:
-        raise HTTPException(status_code=400, detail="Invalid OTP code.")
-        
-    # 4. Success! Delete the OTP so it can't be used again
-    await db.otps.delete_one({"email": payload.email})
-    
-    # Optional: If this is for registration, you could return a temporary token here, 
-    # or just return a success message allowing the frontend to move to the next step.
-    return {"message": "Email verified successfully!", "verified": True}
