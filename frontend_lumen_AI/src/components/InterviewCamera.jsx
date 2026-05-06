@@ -3,14 +3,29 @@ import { apiJson } from '../lib/api';
 import { getAuth } from '../lib/auth';
 import InterviewAvatar from './InterviewAvatar';
 
-export default function InterviewCamera({ attemptId, currentQuestion }) {
+const INTRO_QUESTION = "Hello, I am Lumin, your AI interviewer. To get started, could you please introduce yourself and tell me about your background?";
+const CONCLUDE_MESSAGE = "Thank you for your time. That concludes our interview.";
+const DEFAULT_TOTAL_QUESTIONS = 5;
+const FALLBACK_QUESTION_BANK = [
+  "Can you walk me through a recent project or task you are proud of?",
+  "How do you prioritize tasks when you have multiple deadlines?",
+  "Tell me about a time you handled a difficult situation at work.",
+  "Which skills or tools are you most confident using for this role?",
+  "Why are you interested in this position?"
+];
+
+export default function InterviewCamera({ attemptId, currentQuestion, onQuestionUpdate }) {
   const auth = getAuth();
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
+  const fallbackPlanRef = useRef([INTRO_QUESTION, ...FALLBACK_QUESTION_BANK].slice(0, DEFAULT_TOTAL_QUESTIONS));
   
   const [recordedChunks, setRecordedChunks] = useState([]);
   const [livenessStatus, setLivenessStatus] = useState('Initializing Camera...');
   const [cameraError, setCameraError] = useState(null);
+  const [interviewError, setInterviewError] = useState('');
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [totalQuestions, setTotalQuestions] = useState(DEFAULT_TOTAL_QUESTIONS);
 
   // Conversational State
   const [hasStarted, setHasStarted] = useState(false);
@@ -19,6 +34,7 @@ export default function InterviewCamera({ attemptId, currentQuestion }) {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [isProcessingAI, setIsProcessingAI] = useState(false);
+  const [manualAnswer, setManualAnswer] = useState('');
   
   // Final state
   const [isFinalizing, setIsFinalizing] = useState(false);
@@ -26,6 +42,7 @@ export default function InterviewCamera({ attemptId, currentQuestion }) {
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const recognitionRef = useRef(null);
+  const keepListeningRef = useRef(false);
 
   // 1. Setup Camera and FaceMesh
   useEffect(() => {
@@ -75,9 +92,36 @@ export default function InterviewCamera({ attemptId, currentQuestion }) {
         setTranscript(currentTranscript);
       };
       
+      recognitionRef.current.onstart = () => {
+        // started
+      };
+
       recognitionRef.current.onend = () => {
-        // We only forcefully set listening to false here. 
-        // If they hit 'Done Speaking', it will already be false.
+        // Auto-restart if the user explicitly requested continuous listening.
+        if (keepListeningRef.current) {
+          // Small debounce to avoid rapid restart loops
+          setTimeout(() => {
+            if (!keepListeningRef.current) return; // Prevent rogue restart if user clicked Done during the debounce
+            try {
+              recognitionRef.current.start();
+              setIsListening(true);
+            } catch (e) {
+              if (e.name === 'InvalidStateError') {
+                setIsListening(true);
+              } else {
+                console.warn("Speech recognition auto-restart failed:", e);
+                setIsListening(false);
+              }
+            }
+          }, 200);
+          return;
+        }
+
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onerror = (e) => {
+        console.warn('SpeechRecognition error', e);
         setIsListening(false);
       };
     }
@@ -116,21 +160,43 @@ export default function InterviewCamera({ attemptId, currentQuestion }) {
   const speakAI = (text, onEndCallback) => {
     setIsAiSpeaking(true);
     const utterance = new SpeechSynthesisUtterance(text);
+    
+    // Prevent garbage collection bug in Chrome
+    window.currentUtterance = utterance;
+
     const voices = window.speechSynthesis.getVoices();
     const proVoice = voices.find(v => v.name.includes('Google') || v.name.includes('Samantha') || v.lang === 'en-US');
     if (proVoice) utterance.voice = proVoice;
     utterance.rate = 1.0;
     
-    utterance.onend = () => {
+    const handleEnd = () => {
       setIsAiSpeaking(false);
       if (onEndCallback) onEndCallback();
     };
+
+    utterance.onend = handleEnd;
+    utterance.onerror = (e) => {
+      console.warn('Speech synthesis error:', e);
+      handleEnd();
+    };
+
     window.speechSynthesis.speak(utterance);
   };
 
   // Start the Interview
   const handleStartInterview = () => {
+    if (!attemptId) {
+      setInterviewError('Interview session missing. Please return to setup and start again.');
+      return;
+    }
+
+    setInterviewError('');
     setHasStarted(true);
+    setQuestionIndex(1);
+    setTotalQuestions(DEFAULT_TOTAL_QUESTIONS);
+    if (onQuestionUpdate) {
+      onQuestionUpdate({ text: INTRO_QUESTION, index: 1, total: DEFAULT_TOTAL_QUESTIONS, phase: 'in-progress' });
+    }
     
     // Start Recording Video
     const stream = videoRef.current.srcObject;
@@ -143,31 +209,79 @@ export default function InterviewCamera({ attemptId, currentQuestion }) {
     }
 
     // AI Greeting
-    const greeting = "Hello, I am Lumin, your AI interviewer. To get started, could you please introduce yourself and tell me about your background?";
-    setChatHistory([{ role: 'model', text: greeting }]);
-    
-    speakAI(greeting, () => {
+    setChatHistory([{ role: 'model', text: INTRO_QUESTION }]);
+
+    speakAI(INTRO_QUESTION, () => {
       startListening();
     });
   };
 
   const startListening = () => {
-    if (recognitionRef.current) {
-      setTranscript('');
+    if (!recognitionRef.current || isProcessingAI || isAiSpeaking) {
+      setIsListening(false);
+      return;
+    }
+    // mark that user wants continuous listening so onend will auto-restart
+    keepListeningRef.current = true;
+    setTranscript('');
+    
+    try { 
+      recognitionRef.current.start(); 
       setIsListening(true);
-      try { recognitionRef.current.start(); } catch(e){}
+    } catch(e) {
+      if (e.name === 'InvalidStateError') {
+        // Already listening
+        setIsListening(true);
+      } else {
+        console.warn("Speech recognition failed to start:", e);
+        setIsListening(false);
+      }
     }
   };
 
-  // Submit Answer to Chat Endpoint
-  const handleDoneSpeaking = async () => {
-    if (recognitionRef.current) recognitionRef.current.stop();
+  const submitAnswer = async (answerText) => {
+    if (!hasStarted) {
+      setInterviewError('Please join the call before sending an answer.');
+      return;
+    }
+    if (!attemptId) {
+      setInterviewError('Interview session missing. Please return to setup and start again.');
+      return;
+    }
+    if (recognitionRef.current) {
+      // user is submitting, disable auto-restart and stop recognition
+      keepListeningRef.current = false;
+      try { recognitionRef.current.stop(); } catch (e) {}
+    }
     setIsListening(false);
     setIsProcessingAI(true);
+    setInterviewError('');
 
-    const userText = transcript || "(Candidate provided a silent or unintelligible response)";
+    const userText = (answerText || '').trim() || "(Candidate provided a silent or unintelligible response)";
     const updatedHistory = [...chatHistory, { role: 'user', text: userText }];
     setChatHistory(updatedHistory);
+
+    const fallbackPlan = fallbackPlanRef.current;
+    const fallbackTotal = fallbackPlan.length;
+
+    const fallbackResponse = () => {
+      const nextIndex = questionIndex + 1;
+      if (nextIndex > fallbackTotal) {
+        return {
+          reply: CONCLUDE_MESSAGE,
+          is_complete: true,
+          question_index: fallbackTotal,
+          total_questions: fallbackTotal
+        };
+      }
+
+      return {
+        reply: fallbackPlan[nextIndex - 1],
+        is_complete: false,
+        question_index: nextIndex,
+        total_questions: fallbackTotal
+      };
+    };
 
     try {
       const payload = {
@@ -177,15 +291,34 @@ export default function InterviewCamera({ attemptId, currentQuestion }) {
       };
 
       const res = await apiJson('/api/candidate/interviews/chat', {
-        method: 'POST', token: auth?.token, body: JSON.stringify(payload)
+        method: 'POST',
+        token: auth?.token,
+        body: payload
       });
 
-      const aiReply = res.reply;
+      const aiReply = res?.reply || '';
+      if (!aiReply.trim()) {
+        throw new Error('Empty AI reply');
+      }
+      const resolvedTotal = res?.total_questions || totalQuestions || fallbackTotal;
+      const resolvedIndex = res?.question_index || Math.min(questionIndex + 1, resolvedTotal);
+
       setChatHistory(prev => [...prev, { role: 'model', text: aiReply }]);
       setIsProcessingAI(false);
+      setQuestionIndex(resolvedIndex);
+      setTotalQuestions(resolvedTotal);
+
+      if (onQuestionUpdate) {
+        onQuestionUpdate({
+          text: aiReply,
+          index: Math.min(resolvedIndex, resolvedTotal),
+          total: resolvedTotal,
+          phase: res?.is_complete ? 'complete' : 'in-progress'
+        });
+      }
 
       speakAI(aiReply, () => {
-        if (res.is_complete) {
+        if (res?.is_complete) {
           concludeInterview();
         } else {
           startListening();
@@ -193,9 +326,49 @@ export default function InterviewCamera({ attemptId, currentQuestion }) {
       });
     } catch (err) {
       console.error(err);
+      const fallback = fallbackResponse();
+
+      setChatHistory(prev => [...prev, { role: 'model', text: fallback.reply }]);
       setIsProcessingAI(false);
-      speakAI("I'm sorry, I'm having connection issues. Let's try that again.", () => startListening());
+      setQuestionIndex(fallback.question_index);
+      setTotalQuestions(fallback.total_questions);
+
+      if (onQuestionUpdate) {
+        onQuestionUpdate({
+          text: fallback.reply,
+          index: fallback.question_index,
+          total: fallback.total_questions,
+          phase: fallback.is_complete ? 'complete' : 'in-progress'
+        });
+      }
+
+      speakAI(fallback.reply, () => {
+        if (fallback.is_complete) {
+          concludeInterview();
+        } else {
+          startListening();
+        }
+      });
     }
+  };
+
+  // Submit Answer to Chat Endpoint
+  const isSubmittingRef = useRef(false);
+  const handleDoneSpeaking = async () => {
+    if (isProcessingAI || isAiSpeaking || !hasStarted || isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
+    
+    // user finished speaking; prevent auto-restart while we process the answer
+    keepListeningRef.current = false;
+    const answerText = transcript;
+    setTranscript('');
+    
+    // Immediately show UI as processing before async handoff
+    setIsListening(false);
+    setIsProcessingAI(true);
+    
+    await submitAnswer(answerText);
+    isSubmittingRef.current = false;
   };
 
   const concludeInterview = async () => {
@@ -306,6 +479,44 @@ export default function InterviewCamera({ attemptId, currentQuestion }) {
          )}
       </div>
 
+      {/* Transcript + Manual Input */}
+      <div className="absolute bottom-24 left-4 md:left-8 right-4 md:right-80 z-20">
+        <div className="bg-black/50 border border-white/10 rounded-2xl p-4 backdrop-blur-md">
+          <div className="flex items-center justify-between text-xs text-slate-400">
+            <span>Live transcript</span>
+            {!SpeechRecognition && <span className="text-amber-300">Voice input unavailable</span>}
+          </div>
+          <p className="text-sm text-slate-200 mt-2 min-h-[40px]">
+            {isListening && transcript.trim().length === 0 ? 'Listening...' : (transcript || 'Your response will appear here.')}
+          </p>
+          {interviewError && (
+            <p className="text-xs text-rose-300 mt-2">{interviewError}</p>
+          )}
+
+          {!SpeechRecognition && !finalScore && !isFinalizing && (
+            <div className="mt-3 flex flex-col md:flex-row gap-3">
+              <input
+                value={manualAnswer}
+                onChange={(e) => setManualAnswer(e.target.value)}
+                placeholder="Type your answer here"
+                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-white"
+              />
+              <button
+                onClick={() => {
+                  const answer = manualAnswer;
+                  setManualAnswer('');
+                  submitAnswer(answer);
+                }}
+                disabled={!hasStarted || isProcessingAI || isAiSpeaking || manualAnswer.trim().length === 0}
+                className="bg-emerald-400 text-slate-950 font-semibold px-5 py-2 rounded-xl disabled:opacity-50"
+              >
+                Send answer
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Bottom Controls Bar (Google Meet Style) */}
       <div className="absolute bottom-0 left-0 right-0 h-20 bg-[#202124] border-t border-white/10 flex items-center justify-center gap-6 px-6 z-30">
         {!hasStarted && !finalScore ? (
@@ -319,26 +530,38 @@ export default function InterviewCamera({ attemptId, currentQuestion }) {
               onClick={isListening ? handleDoneSpeaking : startListening}
               disabled={isProcessingAI || isAiSpeaking}
               className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-all ${
+                isProcessingAI ? 'bg-amber-500 hover:bg-amber-500 cursor-wait' :
                 isListening ? 'bg-white hover:bg-slate-200 text-blue-600 ring-4 ring-white/20' : 
                 isAiSpeaking ? 'bg-[#3C4043] opacity-60 cursor-not-allowed' :
                 'bg-[#3C4043] hover:bg-[#4d5156]'
               }`}
-              title={isListening ? "Mute / Send Answer" : "Unmute to Speak"}
+              title={isProcessingAI ? "Processing..." : isListening ? "Mute / Send Answer" : "Unmute to Speak"}
             >
-              {/* SVG Mic Icon */}
-              <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8h-2a5 5 0 01-10 0H3a7.001 7.001 0 006 6.93V17H6v2h8v-2h-3v-2.07z" clipRule="evenodd" />
-              </svg>
+              {isProcessingAI ? (
+                /* Loading Spinner Icon */
+                <svg className="w-6 h-6 animate-spin text-white pointer-events-none" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              ) : (
+                /* SVG Mic Icon */
+                <svg className="w-6 h-6 pointer-events-none" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8h-2a5 5 0 01-10 0H3a7.001 7.001 0 006 6.93V17H6v2h8v-2h-3v-2.07z" clipRule="evenodd" />
+                </svg>
+              )}
             </button>
 
             {/* End Call */}
             <button 
               onClick={concludeInterview} 
-              className="w-14 h-14 rounded-full bg-[#ea4335] hover:bg-[#d93025] flex items-center justify-center text-white shadow-lg transition-colors" 
+              disabled={isProcessingAI || isAiSpeaking}
+              className={`w-14 h-14 rounded-full flex items-center justify-center text-white shadow-lg transition-colors ${
+                isProcessingAI || isAiSpeaking ? 'bg-[#ea4335]/50 cursor-not-allowed' : 'bg-[#ea4335] hover:bg-[#d93025]'
+              }`} 
               title="Leave Call"
             >
               {/* SVG Phone Down Icon */}
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-6 h-6 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 8l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M5 3a2 2 0 00-2 2v1c0 8.284 6.716 15 15 15h1a2 2 0 002-2v-3.28a1 1 0 00-.684-.948l-4.493-1.498a1 1 0 00-1.21.502l-1.13 2.257a11.042 11.042 0 01-5.516-5.517l2.257-1.128a1 1 0 00.502-1.21L9.228 3.683A1 1 0 008.279 3H5z" />
               </svg>
             </button>

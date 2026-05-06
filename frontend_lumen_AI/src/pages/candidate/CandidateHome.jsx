@@ -138,7 +138,7 @@ export default function CandidateHome() {
                   )}
                 </div>
                 <button
-                  onClick={() => navigate(`/interview/${job._id}`)}
+                  onClick={() => navigate(`/rules/${job._id}`)}
                   disabled={job.has_attended || profileIncomplete}
                   className="bg-emerald-400 text-slate-950 font-semibold px-5 py-2.5 rounded-full hover:bg-emerald-300 disabled:opacity-50"
                 >

@@ -87,6 +87,9 @@ function ConvaiModel({ client, isAiSpeaking }) {
   useFrame((state) => {
     if (!scene) return;
 
+    let foundMorph = false;
+    let foundJaw = false;
+
     // Find the mesh that actually has morph targets (typically the Head mesh)
     scene.traverse((node) => {
       if (node.isMesh && node.morphTargetDictionary) {
@@ -106,6 +109,7 @@ function ConvaiModel({ client, isAiSpeaking }) {
 
         // If we found a mouth morph target, animate it!
         if (targetIndex !== -1) {
+          foundMorph = true;
           if (isAiSpeaking) {
             // Create a randomized flapping motion based on time
             const time = state.clock.getElapsedTime();
@@ -123,19 +127,36 @@ function ConvaiModel({ client, isAiSpeaking }) {
         }
       }
       
-      // Bonus: If it has a jaw bone instead of morph targets, rotate it
-      if (node.isBone && (node.name.toLowerCase().includes('jaw') || node.name === 'Jaw')) {
-        if (isAiSpeaking) {
-           const time = state.clock.getElapsedTime();
-           const speechPulse = (Math.sin(time * 15) * 0.5 + 0.5) * 0.5 + (Math.sin(time * 25) * 0.5 + 0.5) * 0.3;
-           // Rotate the jaw slightly downwards
-           // You may need to tune the axis depending on the armature
-           node.rotation.x = Math.max(0, speechPulse * 0.15); 
-        } else {
-           node.rotation.x *= 0.8;
+        // If it has a jaw bone instead of morph targets, rotate it
+        if (node.isBone && (node.name.toLowerCase().includes('jaw') || node.name === 'Jaw')) {
+          foundJaw = true;
+          if (isAiSpeaking) {
+             const time = state.clock.getElapsedTime();
+             const speechPulse = (Math.sin(time * 15) * 0.5 + 0.5) * 0.5 + (Math.sin(time * 25) * 0.5 + 0.5) * 0.3;
+             node.rotation.x = Math.max(0, speechPulse * 0.15); 
+          } else {
+             node.rotation.x *= 0.8;
+          }
         }
-      }
-    });
+        
+        // Fallback: If no morph targets and no jaw, squish the Head bone slightly to simulate talking
+        if (node.isBone && node.name === 'Head' && !foundMorph && !foundJaw) {
+          if (isAiSpeaking) {
+             const time = state.clock.getElapsedTime();
+             const speechPulse = (Math.sin(time * 15) * 0.5 + 0.5) * 0.5 + (Math.sin(time * 25) * 0.5 + 0.5) * 0.3;
+             // Rapidly scale the head's Y axis down by up to 4% to simulate jaw opening
+             node.scale.y = 1 - (speechPulse * 0.04);
+             // Slightly widen the head to preserve volume
+             node.scale.x = 1 + (speechPulse * 0.015);
+             node.scale.z = 1 + (speechPulse * 0.015);
+          } else {
+             // Smoothly return to normal scale
+             node.scale.y += (1 - node.scale.y) * 0.2;
+             node.scale.x += (1 - node.scale.x) * 0.2;
+             node.scale.z += (1 - node.scale.z) * 0.2;
+          }
+        }
+      });
 
     // Slight breathing/idle animation for the whole avatar
     if (avatarRef.current) {
@@ -158,7 +179,7 @@ function ConvaiModel({ client, isAiSpeaking }) {
   return (
     <group ref={avatarRef}>
       {scene ? (
-        <primitive object={scene.clone()} position={[0, 0, 0]} scale={1} />
+        <primitive object={scene} position={[0, 0, 0]} scale={1} />
       ) : (
         // Fallback: simple geometric character
         <>

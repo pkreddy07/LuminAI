@@ -82,6 +82,47 @@ def _score_attempt(seed: str) -> dict:
     }
 
 # ---------------------------------------------------------
+# SCRIPTED INTERVIEW QUESTIONS (PROTOTYPE FALLBACK)
+# ---------------------------------------------------------
+
+INTRO_QUESTION = "Hello, I am Lumin, your AI interviewer. To get started, could you please introduce yourself and tell me about your background?"
+CONCLUDE_MESSAGE = "Thank you for your time. That concludes our interview."
+MAX_QUESTIONS = 5
+
+DEFAULT_QUESTION_BANK = [
+    "Can you walk me through a recent project or task you are proud of?",
+    "How do you prioritize tasks when you have multiple deadlines?",
+    "Tell me about a time you handled a difficult situation at work.",
+    "Which skills or tools are you most confident using for this role?",
+    "Why are you interested in this position?"
+]
+
+ACK_TEMPLATES = [
+    "Thanks for sharing.",
+    "Got it.",
+    "Appreciate the detail.",
+    "Understood.",
+    "Thanks for explaining that."
+]
+
+def _build_question_plan(job: dict) -> List[str]:
+    questions = [INTRO_QUESTION]
+    preferred = [q.strip() for q in job.get("preferred_questions", []) if isinstance(q, str) and q.strip()]
+    for question in preferred:
+        if question not in questions:
+            questions.append(question)
+
+    for question in DEFAULT_QUESTION_BANK:
+        if question not in questions:
+            questions.append(question)
+
+    return questions[:MAX_QUESTIONS]
+
+def _pick_acknowledgement(seed: str, index: int) -> str:
+    rng = random.Random(f"{seed}:{index}")
+    return rng.choice(ACK_TEMPLATES)
+
+# ---------------------------------------------------------
 # ROUTES
 # ---------------------------------------------------------
 
@@ -210,8 +251,9 @@ async def start_interview(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    allow_out_of_window = os.getenv("ALLOW_OUT_OF_WINDOW", "true").lower() in {"1", "true", "yes"}
     now = datetime.utcnow()
-    if job["start_time"] > now or job["end_time"] < now:
+    if not allow_out_of_window and (job["start_time"] > now or job["end_time"] < now):
         raise HTTPException(status_code=400, detail="Interview window is closed")
 
     existing_attempt = await db.interview_attempts.find_one({
@@ -346,11 +388,48 @@ async def chat_interview(
     if not attempt or attempt.get("candidate_id") != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="Not allowed")
 
+    job = None
+    job_id = attempt.get("job_id")
+    if isinstance(job_id, str) and ObjectId.is_valid(job_id):
+        job = await db.job_postings.find_one({"_id": ObjectId(job_id)})
+
     formatted_history = []
     for msg in payload.history:
         formatted_history.append({"role": msg.role, "parts": [msg.text]})
 
-    from app.services.llm_evaluator import generate_next_question
-    result = await generate_next_question(formatted_history, payload.message)
+    use_llm = os.getenv("USE_LLM_INTERVIEW", "false").lower() in {"1", "true", "yes"}
+    has_llm_key = bool(os.getenv("GEMINI_API_KEY"))
 
-    return result
+    if use_llm and has_llm_key:
+        try:
+            from app.services.llm_evaluator import generate_next_question
+            result = await generate_next_question(formatted_history, payload.message)
+            result["mode"] = "llm"
+            return result
+        except Exception:
+            pass
+
+    questions = _build_question_plan(job or {})
+    total_questions = len(questions)
+    model_count = sum(1 for msg in payload.history if msg.role == "model")
+
+    if total_questions == 0 or model_count >= total_questions:
+        return {
+            "reply": CONCLUDE_MESSAGE,
+            "is_complete": True,
+            "question_index": total_questions,
+            "total_questions": total_questions,
+            "mode": "scripted"
+        }
+
+    question_text = questions[model_count]
+    acknowledgement = "" if model_count == 0 else _pick_acknowledgement(payload.attempt_id, model_count)
+    reply = f"{acknowledgement} {question_text}".strip()
+
+    return {
+        "reply": reply,
+        "is_complete": False,
+        "question_index": model_count + 1,
+        "total_questions": total_questions,
+        "mode": "scripted"
+    }

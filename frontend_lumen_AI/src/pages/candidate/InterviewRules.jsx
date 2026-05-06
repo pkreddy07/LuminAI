@@ -36,17 +36,36 @@ export default function InterviewRules() {
     setError('');
     setLoading(true);
 
+    const video = videoRef.current;
+    if (!video.videoWidth || !video.videoHeight) {
+      setError('Camera is not ready yet. Please wait a moment and try again.');
+      setLoading(false);
+      return;
+    }
+
     const ctx = canvasRef.current.getContext('2d');
-    canvasRef.current.width = videoRef.current.videoWidth;
-    canvasRef.current.height = videoRef.current.videoHeight;
-    ctx.drawImage(videoRef.current, 0, 0);
-    
-    canvasRef.current.toBlob(async (blob) => {
+    if (!ctx) {
+      setError('Unable to capture the snapshot. Please refresh and try again.');
+      setLoading(false);
+      return;
+    }
+
+    canvasRef.current.width = video.videoWidth;
+    canvasRef.current.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+
+    const submitSnapshot = async (snapshotBlob) => {
+      if (!snapshotBlob) {
+        setError('Snapshot capture failed. Please try again.');
+        setLoading(false);
+        return;
+      }
+
       try {
         const formData = new FormData();
         formData.append('job_id', id);
-        formData.append('snapshot', blob, 'snapshot.jpg');
-        
+        formData.append('snapshot', snapshotBlob, 'snapshot.jpg');
+
         const response = await apiJson('/api/candidate/interviews/start', {
           method: 'POST',
           token: auth?.token,
@@ -55,7 +74,7 @@ export default function InterviewRules() {
         });
 
         if (stream) stream.getTracks().forEach(t => t.stop());
-        
+
         navigate(`/interview/${id}?attempt_id=${response.attempt_id}`);
       } catch (err) {
         if (err.status === 409) {
@@ -65,6 +84,22 @@ export default function InterviewRules() {
         }
         setLoading(false);
       }
+    };
+
+    canvasRef.current.toBlob((blob) => {
+      if (blob) {
+        submitSnapshot(blob);
+        return;
+      }
+
+      const dataUrl = canvasRef.current.toDataURL('image/jpeg');
+      fetch(dataUrl)
+        .then((res) => res.blob())
+        .then((fallbackBlob) => submitSnapshot(fallbackBlob))
+        .catch(() => {
+          setError('Snapshot capture failed. Please try again.');
+          setLoading(false);
+        });
     }, 'image/jpeg');
   };
 
@@ -102,7 +137,7 @@ export default function InterviewRules() {
             </ul>
 
             <div className="flex flex-col gap-3 mt-8">
-              <button onClick={() => setStep('camera')} className="w-full bg-emerald-400 text-slate-950 font-semibold py-3.5 rounded-xl hover:bg-emerald-300 shadow-md">
+              <button onClick={() => { setError(''); setStep('camera'); }} className="w-full bg-emerald-400 text-slate-950 font-semibold py-3.5 rounded-xl hover:bg-emerald-300 shadow-md">
                 I Understand, Enable Camera
               </button>
               <button onClick={() => navigate('/home')} className="w-full text-slate-400 font-semibold py-2 hover:text-slate-200">
@@ -131,7 +166,7 @@ export default function InterviewRules() {
             <div className="flex flex-col gap-3">
               <button 
                 onClick={handleStart} 
-                disabled={loading || !!error}
+                disabled={loading}
                 className="w-full bg-emerald-400 text-slate-950 font-semibold py-3.5 rounded-xl hover:bg-emerald-300 shadow-md disabled:opacity-50"
               >
                 {loading ? 'Starting...' : 'Take Picture & Start Interview'}

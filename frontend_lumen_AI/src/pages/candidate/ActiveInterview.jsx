@@ -1,5 +1,4 @@
-import React, {useState, useEffect} from 'react';
-import InterviewAvatar from '../../components/InterviewAvatar';
+import React, { useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import InterviewCamera from '../../components/InterviewCamera';
 import LanguageToggle from '../../components/LanguageToggle';
@@ -9,7 +8,27 @@ export default function ActiveInterview() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const attemptId = searchParams.get('attempt_id');
-  const [currentLlmQuestion, setCurrentLlmQuestion] = useState("Welcome to your interview. I am Sarah, your AI recruiter. Are you ready to begin?");
+  const [questionMeta, setQuestionMeta] = useState({
+    text: 'Click Join Call to begin your interview.',
+    index: 0,
+    total: 5,
+    phase: 'idle'
+  });
+
+  const handleQuestionUpdate = (update) => {
+    setQuestionMeta((prev) => ({
+      text: update.text ?? prev.text,
+      index: update.index ?? prev.index,
+      total: update.total ?? prev.total,
+      phase: update.phase ?? prev.phase
+    }));
+  };
+
+  const questionLabel = questionMeta.phase === 'complete'
+    ? 'Interview complete'
+    : questionMeta.index > 0
+      ? `Question ${questionMeta.index} of ${questionMeta.total}`
+      : 'Interview ready';
 
   return (
    <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center pt-8 px-4 sm:px-6 lg:px-8 font-sans">
@@ -36,26 +55,30 @@ export default function ActiveInterview() {
       
       {/* MAIN INTERVIEW CARD */}
       <div className="w-full max-w-4xl bg-white/5 rounded-[32px] shadow-2xl border border-white/10 p-8 mb-8">
-        <h2 className="text-xl font-semibold text-white mb-4">Question 1 of 5</h2>
-        
-        {/* --- UPDATED: DYNAMIC QUESTION TEXT --- */}
-        <p className="text-slate-300 text-lg mb-8 bg-black/40 p-6 rounded-2xl border border-white/5">
-          "{currentLlmQuestion}"
-        </p>
-        
-        {/* THE INTERVIEW INTERFACE (Camera + Avatar) */}
-        <InterviewCamera attemptId={attemptId} currentQuestion={currentLlmQuestion} />
-        
-        {/* TEMPORARY TEST BUTTON (Remove this once the backend is hooked up) */}
-        <div className="mt-8 flex justify-end">
-           <button 
-             onClick={() => setCurrentLlmQuestion("That is a great answer. Now, could you explain the difference between a REST API and GraphQL?")}
-             className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-all"
-           >
-             Test Next AI Question
-           </button>
-        </div>
+        <h2 className="text-xl font-semibold text-white mb-4">{questionLabel}</h2>
 
+        <p className="text-slate-300 text-lg mb-8 bg-black/40 p-6 rounded-2xl border border-white/5">
+          "{questionMeta.text}"
+        </p>
+
+        {!attemptId ? (
+          <div className="bg-rose-500/10 border border-rose-400/20 rounded-2xl p-5 text-sm text-rose-200">
+            <p className="font-semibold">Interview session is missing.</p>
+            <p className="mt-2 text-rose-100/80">Please return to setup so we can capture your snapshot and create a valid attempt.</p>
+            <button
+              onClick={() => navigate(`/rules/${id}`)}
+              className="mt-4 bg-rose-400 text-slate-950 font-semibold px-4 py-2 rounded-full"
+            >
+              Go to interview setup
+            </button>
+          </div>
+        ) : (
+          <InterviewCamera
+            attemptId={attemptId}
+            currentQuestion={questionMeta.text}
+            onQuestionUpdate={handleQuestionUpdate}
+          />
+        )}
       </div>
     </div>
   );
