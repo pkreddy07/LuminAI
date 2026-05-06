@@ -29,7 +29,7 @@ export default function AdminDashboard() {
   const [viewCandidate, setViewCandidate] = useState(null);
 
   useEffect(() => {
-    if (!auth?.token) {
+    if (!auth?.token || auth?.role !== 'admin') {
       navigate('/');
       return;
     }
@@ -78,7 +78,7 @@ export default function AdminDashboard() {
         });
         const query = params.toString() ? `?${params.toString()}` : '';
         const data = await apiJson(`/api/admin/jobs/${selectedJob._id}/candidates${query}`, { token: auth.token });
-        setCandidates(data || []);
+        setCandidates(data?.payload || []);
       } catch {
         setCandidates([]);
       }

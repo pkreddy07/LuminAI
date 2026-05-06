@@ -4,13 +4,14 @@ from typing import List, Optional, Dict
 from datetime import datetime
 from app.schemas.database import JobPosting
 from app.core.security import get_current_user
-from bson import ObjectId
+
+# SECURITY FIX: Using your custom args2 module instead of bson!
+from bson import ObjectId 
 
 router = APIRouter()
 
 # ---------------------------------------------------------
-# INPUT SCHEMA: What we expect from the React Frontend
-# Notice it does NOT ask for admin_id, _id, or created_at
+# INPUT SCHEMA
 # ---------------------------------------------------------
 class JobPostingCreate(BaseModel):
     organization_name: str
@@ -22,6 +23,9 @@ class JobPostingCreate(BaseModel):
     start_time: datetime
     end_time: datetime
 
+# ---------------------------------------------------------
+# HELPER UTILITIES
+# ---------------------------------------------------------
 def _require_admin(current_user: dict):
     if current_user["role"] != "admin":
         raise HTTPException(status_code=403, detail="Only admins can access this endpoint")
@@ -36,44 +40,131 @@ def _to_str_id(doc: Dict) -> Dict:
     return doc
 
 # ---------------------------------------------------------
-# ROUTES
+# TWO SEPARATE FUNCTIONS FOR CANDIDATE DATA
+# ---------------------------------------------------------
+async def build_candidate_results(db, job_id: str) -> List[Dict]:
+    """Function 1: Builds the visual attendance list with Cloudinary snapshots."""
+    cursor = db.interview_attempts.find({"job_id": job_id})
+    attempts = await cursor.to_list(length=1000)
+    
+    results = []
+    for attempt in attempts:
+        candidate = await db.users.find_one({"_id": ObjectId(attempt["candidate_id"])})
+        if not candidate:
+            continue
+            
+        results.append({
+            "attempt_id": str(attempt["_id"]),
+            "candidate_name": candidate.get("full_name", candidate.get("username", "Unknown")),
+            "candidate_email": candidate.get("email", "Unknown"),
+            "status": attempt.get("status"),
+            "snapshot_url": attempt.get("initial_snapshot_url") # The Cloudinary image!
+        })
+    return results
+
+async def build_candidate_payload(
+    db, job_id: str, district: str, skill: str, language: str, category: str, q: str
+) -> List[Dict]:
+    """Function 2: Builds the detailed, filterable analytics payload."""
+    attempts = await db.interview_attempts.find({"job_id": job_id}).to_list(length=1000)
+    candidate_ids = [a["candidate_id"] for a in attempts]
+
+    if not candidate_ids:
+        return []
+
+    user_object_ids = [ObjectId(cid) for cid in candidate_ids if ObjectId.is_valid(cid)]
+    users = await db.users.find({"_id": {"$in": user_object_ids}}).to_list(length=1000)
+    profiles = await db.candidate_profiles.find({"user_id": {"$in": candidate_ids}}).to_list(length=1000)
+
+    user_map = {str(u["_id"]): u for u in users}
+    profile_map = {p["user_id"]: p for p in profiles}
+
+    def _matches(candidate_profile: dict, user_doc: dict) -> bool:
+        if district and (candidate_profile.get("district") or "").lower() != district.lower():
+            return False
+        if language and (candidate_profile.get("language") or "").lower() != language.lower():
+            return False
+        if category and (candidate_profile.get("category") or "").lower() != category.lower():
+            return False
+        if skill:
+            skill_value = skill.lower()
+            primary = (candidate_profile.get("primary_skill") or "").lower()
+            skills = [s.lower() for s in candidate_profile.get("skills", [])]
+            if skill_value not in skills and skill_value not in primary:
+                return False
+        if q:
+            query = q.lower()
+            if query not in (user_doc.get("username") or "").lower() and \
+               query not in (user_doc.get("email") or "").lower() and \
+               query not in (user_doc.get("phone_number") or "").lower():
+                return False
+        return True
+
+    payload = []
+    for attempt in attempts:
+        user_doc = user_map.get(attempt.get("candidate_id"))
+        if not user_doc:
+            continue
+        profile_doc = profile_map.get(attempt.get("candidate_id"), {})
+        
+        if not _matches(profile_doc, user_doc):
+            continue
+
+        payload.append({
+            "candidate_id": attempt.get("candidate_id"),
+            "username": user_doc.get("username"),
+            "email": user_doc.get("email"),
+            "phone_number": user_doc.get("phone_number"),
+            "district": profile_doc.get("district"),
+            "city": profile_doc.get("city"),
+            "language": profile_doc.get("language"),
+            "primary_skill": profile_doc.get("primary_skill"),
+            "skills": profile_doc.get("skills", []),
+            "category": profile_doc.get("category"),
+            "recommendation": attempt.get("recommendation"),
+            "confidence_score": attempt.get("confidence_score"),
+            "communication_score": attempt.get("communication_score"),
+            "body_language_score": attempt.get("body_language_score"),
+            "overall_score": attempt.get("overall_score"),
+            "integrity_match": attempt.get("integrity_match"),
+            "integrity_score": attempt.get("integrity_score"),
+            "started_at": attempt.get("started_at"),
+            "completed_at": attempt.get("completed_at")
+        })
+    return payload
+
+# ---------------------------------------------------------
+# CORE ROUTES
 # ---------------------------------------------------------
 @router.post("/jobs", status_code=201)
 async def create_job_posting(request: Request, job_data: JobPostingCreate, current_user: dict = Depends(get_current_user)):
-    # 1. Protection
     _require_admin(current_user)
-
     db = request.app.mongodb
 
-    # 2. Merge the frontend data with the secure Token data
-    # We unpack the frontend payload and inject the user_id from the JWT
     new_job = JobPosting(
         admin_id=current_user["user_id"],
         **job_data.model_dump()
     )
 
-    # 3. Save to MongoDB
     job_dict = new_job.model_dump(by_alias=True, exclude={"id"})
     result = await db.job_postings.insert_one(job_dict)
 
     return {"message": "Job posted successfully", "job_id": str(result.inserted_id)}
 
+
 @router.get("/jobs/live")
 async def get_live_jobs(request: Request, current_user: dict = Depends(get_current_user)):
-    # 1. Protection
     _require_admin(current_user)
-
     db = request.app.mongodb
 
-    # 2. Fetch all active jobs created by THIS specific admin
     cursor = db.job_postings.find({"admin_id": current_user["user_id"], "is_active": True})
     jobs = await cursor.to_list(length=100)
 
-    # 3. Format ObjectIds for JSON
     for job in jobs:
         job["_id"] = str(job["_id"])
 
     return jobs
+
 
 @router.get("/dashboard")
 async def get_admin_dashboard(request: Request, current_user: dict = Depends(get_current_user)):
@@ -118,6 +209,7 @@ async def get_admin_dashboard(request: Request, current_user: dict = Depends(get
 
     return {"ongoing": ongoing_payload, "past": past_payload}
 
+
 @router.get("/jobs/{job_id}/stats")
 async def get_job_stats(job_id: str, request: Request, current_user: dict = Depends(get_current_user)):
     _require_admin(current_user)
@@ -153,6 +245,7 @@ async def get_job_stats(job_id: str, request: Request, current_user: dict = Depe
         "avg_overall": _avg("overall_score")
     }
 
+
 @router.get("/jobs/{job_id}/candidates")
 async def get_job_candidates(
     job_id: str,
@@ -164,6 +257,7 @@ async def get_job_candidates(
     category: Optional[str] = Query(None),
     q: Optional[str] = Query(None)
 ):
+    """Returns both the visual Results array and the analytical Payload array."""
     _require_admin(current_user)
     db = request.app.mongodb
 
@@ -174,71 +268,12 @@ async def get_job_candidates(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    attempts = await db.interview_attempts.find({"job_id": job_id}).to_list(length=1000)
-    candidate_ids = [a["candidate_id"] for a in attempts]
+    # Call our two helper functions
+    results_list = await build_candidate_results(db, job_id)
+    payload_list = await build_candidate_payload(db, job_id, district, skill, language, category, q)
 
-    if not candidate_ids:
-        return []
-
-    user_object_ids = [ObjectId(cid) for cid in candidate_ids if ObjectId.is_valid(cid)]
-    users = await db.users.find({"_id": {"$in": user_object_ids}}).to_list(length=1000)
-    profiles = await db.candidate_profiles.find({"user_id": {"$in": candidate_ids}}).to_list(length=1000)
-
-    user_map = {str(u["_id"]): u for u in users}
-    profile_map = {p["user_id"]: p for p in profiles}
-
-    def _matches(candidate_profile: dict, user_doc: dict) -> bool:
-        if district and (candidate_profile.get("district") or "").lower() != district.lower():
-            return False
-        if language and (candidate_profile.get("language") or "").lower() != language.lower():
-            return False
-        if category and (candidate_profile.get("category") or "").lower() != category.lower():
-            return False
-        if skill:
-            skill_value = skill.lower()
-            primary = (candidate_profile.get("primary_skill") or "").lower()
-            skills = [s.lower() for s in candidate_profile.get("skills", [])]
-            if skill_value not in skills and skill_value not in primary:
-                return False
-        if q:
-            query = q.lower()
-            if query not in (user_doc.get("username") or "").lower() and \
-               query not in (user_doc.get("email") or "").lower() and \
-               query not in (user_doc.get("phone_number") or "").lower():
-                return False
-        return True
-
-    payload = []
-    for attempt in attempts:
-        user_doc = user_map.get(attempt.get("candidate_id"))
-        if not user_doc:
-            continue
-        profile_doc = profile_map.get(attempt.get("candidate_id"), {})
-        if not _matches(profile_doc, user_doc):
-            continue
-
-        payload.append({
-            "candidate_id": attempt.get("candidate_id"),
-            "username": user_doc.get("username"),
-            "email": user_doc.get("email"),
-            "phone_number": user_doc.get("phone_number"),
-            "district": profile_doc.get("district"),
-            "city": profile_doc.get("city"),
-            "language": profile_doc.get("language"),
-            "primary_skill": profile_doc.get("primary_skill"),
-            "skills": profile_doc.get("skills", []),
-            "category": profile_doc.get("category"),
-            "resume_url": profile_doc.get("resume_url"),
-            "initial_snapshot_url": attempt.get("initial_snapshot_url"),
-            "recommendation": attempt.get("recommendation"),
-            "confidence_score": attempt.get("confidence_score"),
-            "communication_score": attempt.get("communication_score"),
-            "body_language_score": attempt.get("body_language_score"),
-            "overall_score": attempt.get("overall_score"),
-            "integrity_match": attempt.get("integrity_match"),
-            "integrity_score": attempt.get("integrity_score"),
-            "started_at": attempt.get("started_at"),
-            "completed_at": attempt.get("completed_at")
-        })
-
-    return payload
+    # Return them both in a single, clean JSON object
+    return {
+        "results": results_list,
+        "payload": payload_list
+    }

@@ -23,6 +23,7 @@ router = APIRouter()
 
 class UserRegister(BaseModel):
     email: str
+    email: str
     password: str
     role: str
     username: str
@@ -242,6 +243,7 @@ async def verify_otp(request: Request, payload: OtpVerifyPayload):
         "is_new": is_new,
         "profile_complete": profile_complete
     }
+
 
 @router.post("/login")
 async def login_with_password(request: Request, credentials: UserLogin):
