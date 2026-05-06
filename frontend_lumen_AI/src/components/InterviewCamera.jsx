@@ -241,7 +241,7 @@ export default function InterviewCamera({ attemptId, currentQuestion }) {
           isAiSpeaking ? 'ring-4 ring-emerald-500 scale-105 shadow-[0_0_80px_rgba(16,185,129,0.3)]' : 'ring-2 ring-white/10'
         }`}>
            <div className="absolute inset-0 w-full h-full">
-             <InterviewAvatar currentQuestion={currentQuestion} hideBackground={true} />
+             <InterviewAvatar currentQuestion={currentQuestion} hideBackground={true} isAiSpeaking={isAiSpeaking} />
            </div>
            
            {/* If AI is thinking, show small spinner overlay on avatar */}
