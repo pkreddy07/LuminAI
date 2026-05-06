@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../../lib/api';
 import { getAuth } from '../../lib/auth';
+import LanguageToggle from '../../components/LanguageToggle';
 
 export default function CandidateOnboarding() {
   const navigate = useNavigate();
@@ -85,6 +86,11 @@ export default function CandidateOnboarding() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+
+      <div className="absolute top-6 right-6 z-50">
+        <LanguageToggle />
+      </div>
+
       <div className="max-w-3xl mx-auto px-6 py-12">
         <div className="mb-10">
           <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">Candidate setup</p>

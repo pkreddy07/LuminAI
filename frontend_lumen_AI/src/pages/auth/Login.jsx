@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { apiJson } from '../../lib/api';
 import { setAuth } from '../../lib/auth';
+import LanguageToggle from '../../components/LanguageToggle';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -124,6 +125,12 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center px-6 py-12">
+
+      {/* ADD THE TOGGLE HERE! */}
+      <div className="absolute top-6 right-6 z-50">
+        <LanguageToggle />
+      </div>
+
       <div className="w-full max-w-5xl grid lg:grid-cols-[1.1fr_0.9fr] gap-8">
         
         {/* Left Side: Branding */}

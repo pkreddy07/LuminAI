@@ -132,10 +132,9 @@ async def get_active_jobs(
     db = request.app.mongodb
     now = datetime.utcnow()
 
-    # Base condition: Currently inside the time window
+    # FIX: Removed the start_time filter so Upcoming interviews appear in the Active list!
     base_query = {
         "is_active": True,
-        "start_time": {"$lte": now},
         "end_time": {"$gte": now}
     }
 

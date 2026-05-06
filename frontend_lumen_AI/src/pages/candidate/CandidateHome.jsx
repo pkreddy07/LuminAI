@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../../lib/api';
 import { clearAuth, getAuth } from '../../lib/auth';
+import LanguageToggle from '../../components/LanguageToggle';
 
 export default function CandidateHome() {
   const navigate = useNavigate();
@@ -62,6 +63,11 @@ export default function CandidateHome() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+
+      <div className="absolute top-6 right-6 z-50">
+        <LanguageToggle />
+      </div>
+
       <header className="bg-black/40 backdrop-blur border-b border-white/5 px-6 py-4 flex items-center justify-between sticky top-0 z-10">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-emerald-300">Candidate hub</p>

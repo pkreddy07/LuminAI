@@ -22,7 +22,7 @@ class JobPostingCreate(BaseModel):
     ask_category: bool = False
     start_time: datetime
     end_time: datetime
-
+    duration_minutes: int = 30
 # ---------------------------------------------------------
 # HELPER UTILITIES
 # ---------------------------------------------------------
@@ -175,7 +175,7 @@ async def get_admin_dashboard(request: Request, current_user: dict = Depends(get
     ongoing_jobs = await db.job_postings.find({
         "admin_id": current_user["user_id"],
         "is_active": True,
-        "start_time": {"$lte": now},
+        # "start_time": {"$lte": now},
         "end_time": {"$gte": now}
     }).to_list(length=100)
 
