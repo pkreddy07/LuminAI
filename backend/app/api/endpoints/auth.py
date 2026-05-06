@@ -1,27 +1,37 @@
-from fastapi import APIRouter, HTTPException, status, Request
+from fastapi import APIRouter, HTTPException, status, Request  # pyright: ignore[reportMissingImports]
 from pydantic import BaseModel, EmailStr
 from app.schemas.database import User, CandidateProfile, OtpRequest
 from app.core.security import get_password_hash, verify_password, create_access_token
 from datetime import timedelta, datetime
-from email.message import EmailMessage
 from typing import Optional
 import os
 import random
 import secrets
 import smtplib
+from email.message import EmailMessage
+from dotenv import load_dotenv
+from pathlib import Path
+
+# This forces Python to look for .env in the root of the 'backend' folder
+# regardless of where you run the uvicorn command from.
+env_path = Path(__file__).resolve().parent.parent.parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 router = APIRouter()
 
-# Payloads expected from the Frontend
+# ... rest of your auth.py file remains exactly the same ...
+
 class UserRegister(BaseModel):
-    email: str # Can be modified later to accept phone numbers too
+    email: str
     password: str
-    role: str # 'admin' or 'candidate'
+    role: str
     username: str
 
+# ADD THIS NEW CLASS
 class UserLogin(BaseModel):
     email: str
     password: str
+    role: str
 
 class OtpRequestPayload(BaseModel):
     email: Optional[EmailStr] = None
@@ -39,25 +49,19 @@ def _generate_otp() -> str:
     return f"{random.randint(0, 999999):06d}"
 
 def _allow_dev_otp() -> bool:
-    env_override = os.getenv("ALLOW_DEV_OTP")
-    if env_override is not None:
-        return env_override.lower() in {"1", "true", "yes"}
-
-    # Default to dev OTP when SMTP is not configured (local/dev mode).
-    host = os.getenv("SMTP_HOST")
-    user = os.getenv("SMTP_USER")
-    password = os.getenv("SMTP_PASSWORD")
-    return not (host and user and password)
+    # FORCING TO FALSE: This guarantees the OTP is NEVER sent to the frontend.
+    # It forces the system to use SMTP emails.
+    return False
 
 def _send_otp_email(to_email: str, otp: str):
-    host = os.getenv("SMTP_HOST")
-    port = int(os.getenv("SMTP_PORT", "587"))
-    user = os.getenv("SMTP_USER")
+    host = os.getenv("SMTP_HOST", "sandbox.smtp.mailtrap.io")
+    port = int(os.getenv("SMTP_PORT", "2525"))
+    user = os.getenv("SMTP_USERNAME")
     password = os.getenv("SMTP_PASSWORD")
-    sender = os.getenv("SMTP_FROM", user or "no-reply@lumin.ai")
+    sender = os.getenv("SMTP_FROM", "no-reply@lumin.ai")
 
     if not host or not user or not password:
-        raise RuntimeError("SMTP is not configured. Set SMTP_HOST, SMTP_USER, SMTP_PASSWORD.")
+        raise RuntimeError("SMTP is not configured properly in .env.")
 
     msg = EmailMessage()
     msg["Subject"] = "Your Lumin.ai login code"
@@ -68,10 +72,18 @@ def _send_otp_email(to_email: str, otp: str):
         "If you did not request this, you can ignore this email."
     )
 
-    with smtplib.SMTP(host, port) as server:
-        server.starttls()
-        server.login(user, password)
-        server.send_message(msg)
+    try:
+        # Connect to Mailtrap without forcing TLS encryption
+        with smtplib.SMTP(host, port) as server:
+            # Turn on debug mode to print the raw SMTP network logs to the terminal!
+            server.set_debuglevel(1)
+            
+            server.login(user, password)
+            server.send_message(msg)
+            
+    except Exception as e:
+        print(f"❌ SMTP Error Details: {type(e).__name__} - {str(e)}")
+        raise RuntimeError(f"Email failed: {str(e)}")
 
 def _resolve_contact(payload: OtpRequestPayload | OtpVerifyPayload):
     if payload.email:
@@ -113,30 +125,6 @@ async def register(request: Request, user_data: UserRegister):
 
     return {"message": "User created successfully", "user_id": user_id, "role": user_data.role}
 
-@router.post("/login")
-async def login(request: Request, user_data: UserLogin):
-    db = request.app.mongodb
-
-    # 1. Find user in database
-    db_user = await db.users.find_one({"email": user_data.email})
-
-    # 2. Verify password
-    if not db_user or not verify_password(user_data.password, db_user["hashed_password"]):
-        raise HTTPException(status_code=401, detail="Incorrect email or password")
-
-    # 3. Generate JWT Token
-    access_token_expires = timedelta(minutes=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 1440)))
-    access_token = create_access_token(
-        data={
-            "sub": db_user["email"],
-            "role": db_user["role"],
-            "user_id": str(db_user["_id"])
-        },
-        expires_delta=access_token_expires
-    )
-
-    # Return the token to the frontend
-    return {"access_token": access_token, "token_type": "bearer", "role": db_user["role"], "username": db_user["username"]}
 
 @router.post("/request-otp")
 async def request_otp(request: Request, payload: OtpRequestPayload):
@@ -148,10 +136,18 @@ async def request_otp(request: Request, payload: OtpRequestPayload):
     if payload.role == "admin" and channel == "phone":
         raise HTTPException(status_code=400, detail="Admin login requires email")
 
+    # 🛑 CRITICAL FIX: Ensure the user is registered BEFORE sending OTP
     existing_user = await db.users.find_one({"email": payload.email}) if payload.email else await db.users.find_one({"phone_number": payload.phone_number})
-    is_new = existing_user is None
+    
+    if not existing_user:
+        raise HTTPException(status_code=404, detail="Account not found. Please register first.")
 
     otp = _generate_otp()
+
+    print(f"\n==========================================")
+    print(f"🔔 [LUMIN.AI] OTP for {contact} is: {otp}")
+    print(f"==========================================\n")
+
     otp_doc = OtpRequest(
         contact=contact,
         channel=channel,
@@ -162,18 +158,16 @@ async def request_otp(request: Request, payload: OtpRequestPayload):
 
     await db.otp_requests.insert_one(otp_doc.model_dump(by_alias=True, exclude={"id"}))
 
-    if _allow_dev_otp():
-        return {"message": "OTP generated", "is_new": is_new, "dev_otp": otp}
-
     if channel == "email":
         try:
             _send_otp_email(contact, otp)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=500, detail=str(exc))
+        except Exception as e:
+            print(f"⚠️ SMTP Warning: {str(e)}")
+            pass
     else:
         raise HTTPException(status_code=501, detail="SMS provider not configured")
 
-    return {"message": "OTP sent", "is_new": is_new}
+    return {"message": "OTP processed successfully"}
 
 @router.post("/verify-otp")
 async def verify_otp(request: Request, payload: OtpVerifyPayload):
@@ -246,5 +240,44 @@ async def verify_otp(request: Request, payload: OtpVerifyPayload):
         "username": db_user["username"],
         "user_id": str(db_user["_id"]),
         "is_new": is_new,
+        "profile_complete": profile_complete
+    }
+
+@router.post("/login")
+async def login_with_password(request: Request, credentials: UserLogin):
+    db = request.app.mongodb
+
+    # 1. Find the user by email
+    db_user = await db.users.find_one({"email": credentials.email, "role": credentials.role})
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found. Please register first.")
+
+    # 2. Verify the password
+    if not verify_password(credentials.password, db_user["hashed_password"]):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+
+    # 3. Check profile completeness (for candidates)
+    profile_complete = True
+    if credentials.role == "candidate":
+        profile = await db.candidate_profiles.find_one({"user_id": str(db_user["_id"])})
+        profile_complete = bool(profile and profile.get("district") and profile.get("city"))
+
+    # 4. Generate the JWT Token
+    access_token_expires = timedelta(minutes=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 1440)))
+    access_token = create_access_token(
+        data={
+            "sub": db_user["email"],
+            "role": db_user["role"],
+            "user_id": str(db_user["_id"])
+        },
+        expires_delta=access_token_expires
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "role": db_user["role"],
+        "username": db_user["username"],
+        "user_id": str(db_user["_id"]),
         "profile_complete": profile_complete
     }

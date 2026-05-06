@@ -16,7 +16,7 @@ from app.core.security import get_password_hash
 
 load_dotenv()
 
-MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+MONGO_URL = os.getenv("MONGO_URL")
 
 def _resolve_mongo_client_kwargs(mongo_url: str) -> dict:
     env_override = os.getenv("MONGO_TLS")
