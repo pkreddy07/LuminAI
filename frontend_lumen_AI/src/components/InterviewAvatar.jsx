@@ -7,7 +7,7 @@ import { ConvaiClient } from 'convai-web-sdk';
 const CONVAI_API_KEY = "b3af4b38de956e650abecaf5ed81f4ca";
 const CHARACTER_ID = "87162aea-488f-11f1-a794-42010a7be02e";
 
-export default function InterviewAvatar({ currentQuestion }) {
+export default function InterviewAvatar({ currentQuestion, hideBackground }) {
   const [convaiClient, setConvaiClient] = useState(null);
   const [isReady, setIsReady] = useState(false);
 
@@ -49,12 +49,13 @@ export default function InterviewAvatar({ currentQuestion }) {
   }, [currentQuestion, convaiClient, isReady]);
 
   return (
-    <div style={{ width: '100%', height: '500px', background: '#1a1a2e', borderRadius: '12px', overflow: 'hidden' }}>
-      <Canvas camera={{ position: [0, 1.5, 3], fov: 40 }}>
+    <div style={{ width: '100%', height: hideBackground ? '100%' : '500px', background: hideBackground ? 'transparent' : '#1a1a2e', borderRadius: hideBackground ? '0' : '12px', overflow: 'hidden' }}>
+      <Canvas camera={{ position: [0, 1.65, 0.9], fov: 40 }}>
         
-        {/* Cinematic Lighting */}
-        <Environment preset="city" />
-        <ambientLight intensity={0.5} />
+        {/* Cinematic Lighting & Office Background */}
+        <Environment preset="apartment" background blur={0.8} />
+        <ambientLight intensity={0.8} />
+        <spotLight position={[0, 2, 2]} intensity={2} angle={0.5} penumbra={1} />
         <directionalLight position={[10, 10, 10]} intensity={1} />
 
         {/* The 3D Character Container */}
@@ -63,7 +64,13 @@ export default function InterviewAvatar({ currentQuestion }) {
         )}
 
         <ContactShadows position={[0, 0, 0]} opacity={0.5} scale={10} blur={2} />
-        <OrbitControls enableZoom={false} enablePan={false} minPolarAngle={Math.PI / 2.5} maxPolarAngle={Math.PI / 2} />
+        <OrbitControls 
+          enableZoom={false} 
+          enablePan={false} 
+          target={[0, 1.55, 0]} 
+          minPolarAngle={Math.PI / 2} 
+          maxPolarAngle={Math.PI / 2} 
+        />
       </Canvas>
     </div>
   );
@@ -74,7 +81,7 @@ function ConvaiModel({ client }) {
   const avatarRef = useRef();
 
   // Load the model from public folder
-  const { scene } = useGLTF('/model.glb');
+  const { scene } = useGLTF('/model3.glb');
 
   return (
     <group ref={avatarRef}>

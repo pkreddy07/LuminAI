@@ -1,8 +1,9 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { apiJson } from '../lib/api';
 import { getAuth } from '../lib/auth';
+import InterviewAvatar from './InterviewAvatar';
 
-export default function InterviewCamera({ attemptId }) {
+export default function InterviewCamera({ attemptId, currentQuestion }) {
   const auth = getAuth();
   const videoRef = useRef(null);
   const mediaRecorderRef = useRef(null);
@@ -235,14 +236,17 @@ export default function InterviewCamera({ attemptId }) {
       {/* Main Speaker Screen (AI Avatar) */}
       <div className="flex-1 flex flex-col items-center justify-center relative p-8 pb-24">
         
-        {/* Placeholder for AI Camera */}
-        <div className={`relative w-48 h-48 md:w-80 md:h-80 rounded-full overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] transition-all duration-300 z-0 ${
+        {/* The 3D AI Avatar Container */}
+        <div className={`relative w-48 h-48 md:w-80 md:h-80 rounded-full overflow-hidden shadow-[0_0_50px_rgba(0,0,0,0.5)] flex items-center justify-center transition-all duration-300 z-0 ${
           isAiSpeaking ? 'ring-4 ring-emerald-500 scale-105 shadow-[0_0_80px_rgba(16,185,129,0.3)]' : 'ring-2 ring-white/10'
         }`}>
-           <img src="/ai_interviewer_man.png" alt="AI Interviewer" className="w-full h-full object-cover" />
+           <div className="absolute inset-0 w-full h-full">
+             <InterviewAvatar currentQuestion={currentQuestion} hideBackground={true} />
+           </div>
+           
            {/* If AI is thinking, show small spinner overlay on avatar */}
            {isProcessingAI && (
-             <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+             <div className="absolute inset-0 bg-black/40 flex items-center justify-center pointer-events-none z-10">
                <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin" />
              </div>
            )}
