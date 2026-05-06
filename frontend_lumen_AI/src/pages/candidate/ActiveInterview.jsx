@@ -2,6 +2,7 @@ import React, {useState, useEffect} from 'react';
 import InterviewAvatar from '../../components/InterviewAvatar';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import InterviewCamera from '../../components/InterviewCamera';
+import LanguageToggle from '../../components/LanguageToggle';
 
 export default function ActiveInterview() {
   const { id } = useParams();
@@ -13,6 +14,10 @@ export default function ActiveInterview() {
   return (
    <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center pt-8 px-4 sm:px-6 lg:px-8 font-sans">
       
+      <div className="absolute top-6 right-6 z-50">
+        <LanguageToggle />
+      </div>
+
       {/* HEADER SECTION */}
       <div className="w-full max-w-4xl flex justify-between items-center mb-8">
         <div>

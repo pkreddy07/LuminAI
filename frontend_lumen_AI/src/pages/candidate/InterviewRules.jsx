@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { apiJson } from '../../lib/api';
 import { getAuth } from '../../lib/auth';
+import LanguageToggle from '../../components/LanguageToggle';
 
 export default function InterviewRules() {
   const navigate = useNavigate();
@@ -69,6 +70,11 @@ export default function InterviewRules() {
 
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+
+      <div className="absolute top-6 right-6 z-50">
+        <LanguageToggle />
+      </div>
+
       <div className="bg-white/5 max-w-lg w-full p-6 md:p-8 rounded-[32px] shadow-2xl border border-white/10 text-white">
         <h2 className="text-2xl font-semibold mb-4">Interview Setup</h2>
         

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { apiJson } from '../../lib/api';
 import { clearAuth, getAuth } from '../../lib/auth';
+import LanguageToggle from '../../components/LanguageToggle';
 
 const emptySchedule = {
   organization_name: '',
@@ -11,7 +12,8 @@ const emptySchedule = {
   preferred_questions: '',
   ask_category: false,
   start_time: '',
-  end_time: ''
+  end_time: '',
+  duration_minutes: 30
 };
 
 export default function AdminDashboard() {
@@ -100,7 +102,7 @@ export default function AdminDashboard() {
     }
 
     try {
-      const payload = {
+        const payload = {
         organization_name: scheduleData.organization_name,
         title: scheduleData.title,
         job_description: scheduleData.job_description,
@@ -114,7 +116,8 @@ export default function AdminDashboard() {
           .filter(Boolean),
         ask_category: scheduleData.ask_category,
         start_time: scheduleData.start_time,
-        end_time: scheduleData.end_time
+        end_time: scheduleData.end_time,
+        duration_minutes: parseInt(scheduleData.duration_minutes, 10) || 30 // <--- ADD THIS
       };
 
       await apiJson('/api/admin/jobs', {
@@ -136,6 +139,11 @@ export default function AdminDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+
+      <div className="absolute top-6 right-6 z-50">
+        <LanguageToggle />
+      </div>
+
       <div className="flex flex-col lg:flex-row">
         <aside className="lg:w-72 bg-black/40 border-r border-white/5 p-6 min-h-screen">
           <div className="flex items-center justify-between">
@@ -339,94 +347,161 @@ export default function AdminDashboard() {
       </div>
 
       {showScheduleModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center px-4 z-40">
-          <div className="bg-slate-900 border border-white/10 rounded-3xl w-full max-w-2xl p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-semibold">Schedule interview window</h3>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center px-4 z-50 py-10">
+          <div className="bg-slate-950 border border-white/10 rounded-3xl w-full max-w-3xl max-h-full flex flex-col shadow-2xl">
+            
+            {/* Modal Header */}
+            <div className="px-6 py-5 border-b border-white/10 flex items-center justify-between shrink-0">
+              <div>
+                <h3 className="text-xl font-bold text-white">Schedule New Interview</h3>
+                <p className="text-xs text-slate-400 mt-1">Configure your AI interview window and evaluation metrics.</p>
+              </div>
               <button
                 onClick={() => setShowScheduleModal(false)}
-                className="text-slate-400 hover:text-slate-200"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-white/5 text-slate-400 hover:text-white hover:bg-rose-500/20 transition-colors"
               >
-                Close
+                ✕
               </button>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-4">
-              <input
-                value={scheduleData.organization_name}
-                onChange={(e) => setScheduleData({ ...scheduleData, organization_name: e.target.value })}
-                placeholder="Organization name"
-                className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
-              />
-              <input
-                value={scheduleData.title}
-                onChange={(e) => setScheduleData({ ...scheduleData, title: e.target.value })}
-                placeholder="Role title"
-                className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
-              />
+            {/* Modal Scrollable Body */}
+            <div className="p-6 overflow-y-auto space-y-6 custom-scrollbar">
+              
+              {/* Organization & Title */}
+              <div className="grid md:grid-cols-2 gap-5">
+                <div>
+                  <label className="text-xs uppercase tracking-widest text-slate-300 font-semibold mb-2 block">Organization Name</label>
+                  <input
+                    value={scheduleData.organization_name}
+                    onChange={(e) => setScheduleData({ ...scheduleData, organization_name: e.target.value })}
+                    placeholder="e.g. Acme Corp"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-emerald-400/50 outline-none transition"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-widest text-slate-300 font-semibold mb-2 block">Role Title</label>
+                  <input
+                    value={scheduleData.title}
+                    onChange={(e) => setScheduleData({ ...scheduleData, title: e.target.value })}
+                    placeholder="e.g. Senior Frontend Developer"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-emerald-400/50 outline-none transition"
+                  />
+                </div>
+              </div>
+
+              {/* Job Description */}
+              <div>
+                <label className="text-xs uppercase tracking-widest text-slate-300 font-semibold mb-2 block">Job Description</label>
+                <textarea
+                  value={scheduleData.job_description}
+                  onChange={(e) => setScheduleData({ ...scheduleData, job_description: e.target.value })}
+                  placeholder="Describe the responsibilities and expectations for this role..."
+                  rows={4}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-emerald-400/50 outline-none transition resize-none"
+                />
+              </div>
+
+              {/* Skills & AI Configuration */}
+              <div className="grid md:grid-cols-2 gap-5">
+                <div>
+                  <label className="text-xs uppercase tracking-widest text-slate-300 font-semibold mb-2 block">Target Skills</label>
+                  <input
+                    value={scheduleData.skills}
+                    onChange={(e) => setScheduleData({ ...scheduleData, skills: e.target.value })}
+                    placeholder="React, Node.js, System Design (Comma separated)"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-emerald-400/50 outline-none transition"
+                  />
+                </div>
+                <div className="flex flex-col justify-end">
+                  <label className="flex items-center gap-3 bg-black/40 border border-white/10 rounded-xl px-4 py-3 cursor-pointer hover:border-white/20 transition">
+                    <input
+                      type="checkbox"
+                      checked={scheduleData.ask_category}
+                      onChange={(e) => setScheduleData({ ...scheduleData, ask_category: e.target.checked })}
+                      className="w-4 h-4 accent-emerald-400 bg-black/40 border-white/10 rounded"
+                    />
+                    <span className="text-sm font-semibold text-white">Require Category Verification</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Custom Questions */}
+              <div>
+                <label className="text-xs uppercase tracking-widest text-slate-300 font-semibold mb-2 block">Custom AI Interview Questions (Optional)</label>
+                <textarea
+                  value={scheduleData.preferred_questions}
+                  onChange={(e) => setScheduleData({ ...scheduleData, preferred_questions: e.target.value })}
+                  placeholder="Enter one question per line. The AI will prioritize asking these."
+                  rows={3}
+                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-emerald-400/50 outline-none transition resize-none"
+                />
+              </div>
+
+              {/* Time Window & Duration */}
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                <label className="text-xs uppercase tracking-widest text-emerald-300 font-bold mb-4 block flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                  Interview Time Window & Duration
+                </label>
+                
+                {/* Changed to 3 columns to fit duration */}
+                <div className="grid md:grid-cols-3 gap-5">
+                  <div>
+                    <label className="text-xs text-slate-400 font-semibold mb-2 block">Start Time</label>
+                    <input
+                      type="datetime-local"
+                      value={scheduleData.start_time}
+                      onChange={(e) => setScheduleData({ ...scheduleData, start_time: e.target.value })}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-emerald-400/50 outline-none transition [color-scheme:dark]"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-400 font-semibold mb-2 block">End Time</label>
+                    <input
+                      type="datetime-local"
+                      value={scheduleData.end_time}
+                      onChange={(e) => setScheduleData({ ...scheduleData, end_time: e.target.value })}
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-emerald-400/50 outline-none transition [color-scheme:dark]"
+                    />
+                  </div>
+                  {/* NEW DURATION FIELD */}
+                  <div>
+                    <label className="text-xs text-slate-400 font-semibold mb-2 block">Max Duration (Min)</label>
+                    <input
+                      type="number"
+                      min="5"
+                      max="180"
+                      value={scheduleData.duration_minutes}
+                      onChange={(e) => setScheduleData({ ...scheduleData, duration_minutes: e.target.value })}
+                      placeholder="30"
+                      className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:border-emerald-400/50 outline-none transition"
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <textarea
-              value={scheduleData.job_description}
-              onChange={(e) => setScheduleData({ ...scheduleData, job_description: e.target.value })}
-              placeholder="Job description"
-              rows={3}
-              className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white w-full"
-            />
-
-            <div className="grid md:grid-cols-2 gap-4">
-              <input
-                value={scheduleData.skills}
-                onChange={(e) => setScheduleData({ ...scheduleData, skills: e.target.value })}
-                placeholder="Skills (comma separated)"
-                className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
-              />
-              <input
-                value={scheduleData.preferred_questions}
-                onChange={(e) => setScheduleData({ ...scheduleData, preferred_questions: e.target.value })}
-                placeholder="Questions (one per line)"
-                className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
-              />
+            {/* Modal Footer / Actions */}
+            <div className="p-6 border-t border-white/10 shrink-0 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="text-sm font-semibold text-rose-400 w-full sm:w-auto">
+                {error}
+              </div>
+              <div className="flex gap-3 w-full sm:w-auto">
+                <button
+                  onClick={() => setShowScheduleModal(false)}
+                  className="w-full sm:w-auto px-6 py-3 rounded-xl font-semibold text-white bg-white/5 hover:bg-white/10 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSchedule}
+                  className="w-full sm:w-auto bg-emerald-400 text-slate-950 font-bold px-8 py-3 rounded-xl hover:bg-emerald-300 transition shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                >
+                  Schedule Interview
+                </button>
+              </div>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-4">
-              <input
-                type="datetime-local"
-                value={scheduleData.start_time}
-                onChange={(e) => setScheduleData({ ...scheduleData, start_time: e.target.value })}
-                className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
-              />
-              <input
-                type="datetime-local"
-                value={scheduleData.end_time}
-                onChange={(e) => setScheduleData({ ...scheduleData, end_time: e.target.value })}
-                className="bg-black/50 border border-white/10 rounded-xl px-3 py-2 text-sm text-white"
-              />
-            </div>
-
-            <label className="flex items-center gap-2 text-sm text-slate-300">
-              <input
-                type="checkbox"
-                checked={scheduleData.ask_category}
-                onChange={(e) => setScheduleData({ ...scheduleData, ask_category: e.target.checked })}
-              />
-              Ask category preference during onboarding
-            </label>
-
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowScheduleModal(false)}
-                className="bg-white/10 text-white px-4 py-2 rounded-xl"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSchedule}
-                className="bg-emerald-400 text-slate-950 px-4 py-2 rounded-xl font-semibold"
-              >
-                Create window
-              </button>
-            </div>
           </div>
         </div>
       )}
