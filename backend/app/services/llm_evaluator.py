@@ -3,6 +3,7 @@ import time
 import json
 import google.generativeai as genai
 from dotenv import load_dotenv
+import asyncio
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
@@ -45,7 +46,7 @@ async def analyze_interview_video(video_path: str) -> dict:
         
         # 2. Wait for processing
         while uploaded_file.state.name == "PROCESSING":
-            time.sleep(2)
+            await asyncio.sleep(2)
             uploaded_file = genai.get_file(uploaded_file.name)
             
         if uploaded_file.state.name == "FAILED":
