@@ -3,7 +3,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    from req.face_matcher import compare_faces
+    from LuminAI.backend.req.face_matcher import compare_faces
     
     # Simulate what candidate.py does
     # find any file in uploads/snapshots

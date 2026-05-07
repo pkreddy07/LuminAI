@@ -280,7 +280,7 @@ async def start_interview(
         }).to_list(length=50)
 
         if past_attempts:
-            from req.face_matcher import compare_faces, _read_image, _detect_face
+            from LuminAI.backend.req.face_matcher import compare_faces, _read_image, _detect_face
             import cv2
             import asyncio
 
@@ -370,7 +370,7 @@ async def verify_face(
     similarity = 0.92
     if os.getenv("ENABLE_FACE_MATCH", "false").lower() == "true":
         try:
-            from req.face_matcher import compare_faces
+            from LuminAI.backend.req.face_matcher import compare_faces
             initial_url = attempt["initial_snapshot_url"]
             result = compare_faces(initial_url, live_cloudinary_url)
             match = result["match"]

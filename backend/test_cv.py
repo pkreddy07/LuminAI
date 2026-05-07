@@ -13,7 +13,7 @@ async def main():
         url = attempt['initial_snapshot_url']
         print("Testing URL:", url)
         try:
-            from req.face_matcher import _read_image
+            from LuminAI.backend.req.face_matcher import _read_image
             img = _read_image(url)
             print("Successfully read image of shape", img.shape)
         except Exception as e:

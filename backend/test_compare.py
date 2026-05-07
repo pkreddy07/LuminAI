@@ -16,7 +16,7 @@ async def main():
         print("URL1:", url1)
         print("URL2:", url2)
         try:
-            from req.face_matcher import compare_faces
+            from LuminAI.backend.req.face_matcher import compare_faces
             result = compare_faces(url1, url2)
             print("Result:", result)
         except Exception as e:
