@@ -10,10 +10,11 @@ argon2-cffi
 python-multipart
 python-dotenv
 certifi
-numpy
+numpy==1.26.4
 opencv-python
-deepface
-tf-keras
+deepface==0.0.93
+tensorflow==2.15.1
+tf-keras==2.15.1
 cloudinary
 google-generativeai
 edge-tts
