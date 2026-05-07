@@ -194,8 +194,7 @@ async def get_admin_dashboard(request: Request, current_user: dict = Depends(get
     for job in ongoing_jobs:
         job_id = str(job["_id"])
         current_attendees = await db.interview_attempts.count_documents({
-            "job_id": job_id,
-            "status": "In-Progress"
+            "job_id": job_id
         })
         job_doc = _to_str_id(job)
         job_doc["current_attendees"] = current_attendees
@@ -205,8 +204,7 @@ async def get_admin_dashboard(request: Request, current_user: dict = Depends(get
     for job in past_jobs:
         job_id = str(job["_id"])
         total_attended = await db.interview_attempts.count_documents({
-            "job_id": job_id,
-            "status": "Completed"
+            "job_id": job_id
         })
         job_doc = _to_str_id(job)
         job_doc["total_attended"] = total_attended

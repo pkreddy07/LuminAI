@@ -271,6 +271,58 @@ async def start_interview(
     local_snapshot_path = await _save_upload_file(snapshot, SNAPSHOT_DIR)
     full_local_path = SNAPSHOT_DIR / Path(local_snapshot_path).name
     
+    # CROSS-CANDIDATE FACE MATCHING
+    if os.getenv("ENABLE_FACE_MATCH", "false").lower() == "true":
+        past_attempts = await db.interview_attempts.find({
+            "job_id": job_id,
+            "initial_snapshot_url": {"$exists": True, "$ne": None}
+        }).to_list(length=50)
+
+        if past_attempts:
+            from req.face_matcher import compare_faces, _read_image, _detect_face
+            import cv2
+            import asyncio
+
+            # First, quickly check if the CURRENT snapshot even has a valid face
+            try:
+                # We can run this quickly in the main thread or to_thread since it's local
+                def check_current_face():
+                    img = _read_image(str(full_local_path))
+                    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                    _detect_face(gray)
+                await asyncio.to_thread(check_current_face)
+            except Exception as e:
+                # If no face is detected, reject the attempt
+                try: os.remove(full_local_path)
+                except OSError: pass
+                raise HTTPException(status_code=400, detail="No clear face detected in your snapshot. Please ensure your camera is positioned correctly, stay well-lit, and try again.")
+
+            for past_attempt in past_attempts:
+                past_url = past_attempt.get("initial_snapshot_url")
+                # Skip invalid or old relative URLs
+                if not past_url or not past_url.startswith("http"): continue
+                try:
+                    # Run synchronously blocking CV/network code in a background thread
+                    result = await asyncio.to_thread(compare_faces, str(full_local_path), past_url)
+                    if result["match"]:
+                        try:
+                            os.remove(full_local_path)
+                        except OSError:
+                            pass
+                        
+                        matched_user = await db.users.find_one({"_id": ObjectId(past_attempt["candidate_id"])})
+                        matched_email = matched_user.get("email") if matched_user else "another account"
+
+                        raise HTTPException(
+                            status_code=403, 
+                            detail=f"Face match detected. You have already attempted this interview using email: {matched_email}"
+                        )
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    print(f"Face comparison error during cross-check: {e}")
+                    pass
+
     import cloudinary.uploader
     upload_result = cloudinary.uploader.upload(str(full_local_path), folder="lumin_ai/snapshots")
     cloudinary_url = upload_result["secure_url"]
@@ -284,7 +336,7 @@ async def start_interview(
     }
 
     result = await db.interview_attempts.insert_one(attempt_doc)
-    return {"message": "Interview started", "attempt_id": str(result.inserted_id), "snapshot_url": snapshot_url}
+    return {"message": "Interview started", "attempt_id": str(result.inserted_id), "snapshot_url": cloudinary_url}
 
 @router.post("/interviews/verify-face")
 async def verify_face(

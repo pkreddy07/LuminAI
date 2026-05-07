@@ -88,6 +88,9 @@ export default function InterviewRules() {
       } catch (err) {
         if (err.status === 409) {
           setError('Flag: You have already attended this interview.');
+        } else if (err.status === 403 && err.message?.includes('Face match detected')) {
+          alert(err.message);
+          navigate('/home');
         } else {
           setError(err.message || 'Failed to start interview.');
         }
@@ -163,7 +166,7 @@ export default function InterviewRules() {
               {loading && (
                 <div className="absolute inset-0 bg-black/60 flex items-center justify-center flex-col z-10 backdrop-blur-sm">
                   <div className="w-8 h-8 border-4 border-emerald-400 border-t-transparent rounded-full animate-spin mb-3"></div>
-                  <p className="text-sm font-semibold text-emerald-300">Assigning the best AI for you...</p>
+                  <p className="text-sm font-semibold text-emerald-300">Verifying user and checking for face similarity...</p>
                 </div>
               )}
             </div>
