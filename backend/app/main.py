@@ -177,7 +177,7 @@ app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 origins = [
     "http://localhost:5173",  # React frontend
     "http://127.0.0.1:5173"  # Live Server frontend
-    "https://luminai-1-ua1w.onrender.com/"
+    "https://luminai-1-ua1w.onrender.com"
 ]
 
 # Essential for connecting React/Vite to FastAPI
