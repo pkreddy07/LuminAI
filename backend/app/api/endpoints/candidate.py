@@ -432,6 +432,15 @@ async def complete_interview(
     else:
         scores = _score_attempt(attempt_id)
 
+    # Hardcode good scores as requested by the user
+    scores = {
+        "confidence_score": 88,
+        "communication_score": 92,
+        "body_language_score": 85,
+        "overall_score": 89,
+        "recommendation": "Highly Recommended"
+    }
+
     # Save the Cloudinary URL and Scores to MongoDB
     update_data = {**scores, "status": "Completed", "completed_at": datetime.now()}
     if video_cloudinary_url:
