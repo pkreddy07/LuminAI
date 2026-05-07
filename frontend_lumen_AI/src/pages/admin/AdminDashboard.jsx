@@ -514,7 +514,7 @@ export default function AdminDashboard() {
                 <div className="w-24 h-24 bg-black/50 border border-white/10 rounded-2xl overflow-hidden shrink-0">
                   {viewCandidate.initial_snapshot_url ? (
                     <img
-                      src={`${apiBase}${viewCandidate.initial_snapshot_url}`}
+                      src={viewCandidate.initial_snapshot_url.startsWith('http') ? viewCandidate.initial_snapshot_url : `${apiBase}${viewCandidate.initial_snapshot_url}`}
                       alt="Candidate snapshot"
                       className="w-full h-full object-cover"
                     />
