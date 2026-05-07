@@ -273,9 +273,10 @@ async def start_interview(
     
     # CROSS-CANDIDATE FACE MATCHING
     if os.getenv("ENABLE_FACE_MATCH", "false").lower() == "true":
+        # Only pull attempts that have absolute URLs (like Cloudinary)
         past_attempts = await db.interview_attempts.find({
             "job_id": job_id,
-            "initial_snapshot_url": {"$exists": True, "$ne": None}
+            "initial_snapshot_url": {"$regex": "^http"}
         }).to_list(length=50)
 
         if past_attempts:
