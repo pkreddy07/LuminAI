@@ -11,10 +11,7 @@ python-multipart
 python-dotenv
 certifi
 numpy==1.26.4
-opencv-python
-deepface==0.0.93
-tensorflow==2.15.1
-tf-keras==2.15.1
+opencv-python-headless
 cloudinary
 google-generativeai
 edge-tts
