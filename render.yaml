@@ -13,7 +13,7 @@ services:
       - key: MONGO_URL
         sync: false
       - key: SECRET_KEY
-        value: "lumin24csb0a7724csb0b1524csb0b24"
+        sync: false
       - key: ALGORITHM
         value: "HS256"
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
@@ -21,17 +21,17 @@ services:
       - key: CLOUDINARY_CLOUD_NAME
         value: "dxjj5lr7v"
       - key: CLOUDINARY_API_KEY
-        value: "968426229835983"
+        sync: false
       - key: CLOUDINARY_API_SECRET
-        value: "b423kNt5Vzjrp3gZT4OQlTiXlao"
+        sync: false
       - key: SMTP_EMAIL
         value: "mrpkreddy07@gmail.com"
       - key: SMTP_PASSWORD
-        value: "qvzvleuyjsegxayn"
+        sync: false
       - key: ENABLE_FACE_MATCH
         value: "false"
       - key: VITE_SIMLI_API_KEY
-        value: "ypq57rbupjcm08dnqkxiv9"
+        sync: false
       - key: VITE_SIMLI_FACE_ID
         value: "cace3ef7-a4c4-425d-a8cf-a5358eb0c427"
       - key: GEMINI_API_KEY
