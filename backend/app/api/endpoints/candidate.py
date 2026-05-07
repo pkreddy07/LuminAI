@@ -8,6 +8,7 @@ from pathlib import Path
 from uuid import uuid4
 import os
 import random
+from app.services.face_auth import upload_video_to_cloudinary
 
 router = APIRouter()
 
@@ -335,9 +336,7 @@ async def complete_interview(
     attempt = await db.interview_attempts.find_one({"_id": ObjectId(attempt_id)})
     if not attempt:
         raise HTTPException(status_code=404, detail="Interview attempt not found")
-    if attempt.get("candidate_id") != current_user["user_id"]:
-        raise HTTPException(status_code=403, detail="Not allowed")
-
+    
     scores = {
         "confidence_score": 0,
         "communication_score": 0,
@@ -346,22 +345,36 @@ async def complete_interview(
         "recommendation": "Needs Training"
     }
 
+    video_cloudinary_url = None
+
     if video:
-        from app.services.llm_evaluator import analyze_interview_video
+        # 1. Save it locally temporarily
         video_path = await _save_upload_file(video, SNAPSHOT_DIR)
         full_path = SNAPSHOT_DIR / Path(video_path).name
+        
+        # 2. Upload the local file to Cloudinary
+        video_cloudinary_url = upload_video_to_cloudinary(str(full_path))
+        
+        # 3. Analyze it
+        from app.services.llm_evaluator import analyze_interview_video
         scores = await analyze_interview_video(str(full_path))
+        
+        # Optional: You can delete the local file here if you want to save server space!
+        # os.remove(full_path)
     else:
-        # Fallback to mock if no video is provided for some reason
         scores = _score_attempt(attempt_id)
+
+    # Save the Cloudinary URL and Scores to MongoDB
+    update_data = {**scores, "status": "Completed", "completed_at": datetime.utcnow()}
+    if video_cloudinary_url:
+        update_data["video_url"] = video_cloudinary_url
 
     await db.interview_attempts.update_one(
         {"_id": ObjectId(attempt_id)},
-        {"$set": {**scores, "status": "Completed", "completed_at": datetime.utcnow()}}
+        {"$set": update_data}
     )
 
-    return {"message": "Interview completed", "scores": scores}
-
+    return {"message": "Interview completed", "scores": scores, "video_url": video_cloudinary_url}
 class ChatMessage(BaseModel):
     role: str
     text: str
