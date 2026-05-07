@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import InterviewCamera from '../../components/InterviewCamera';
 import LanguageToggle from '../../components/LanguageToggle';
+import { getAuth } from '../../lib/auth';
+import { useEffect } from 'react';
 
 export default function ActiveInterview() {
   const { id } = useParams();
@@ -14,6 +16,19 @@ export default function ActiveInterview() {
     total: 5,
     phase: 'idle'
   });
+
+  const auth = getAuth();
+
+  useEffect(() => {
+    if (!auth?.token) {
+      navigate('/');
+      return;
+    }
+    if (auth?.role !== 'candidate') {
+      navigate(auth?.role === 'admin' ? '/admin' : '/');
+      return;
+    }
+  }, [auth?.token, auth?.role, navigate]);
 
   const handleQuestionUpdate = (update) => {
     setQuestionMeta((prev) => ({

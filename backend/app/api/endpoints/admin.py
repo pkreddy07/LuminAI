@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel
 from typing import List, Optional, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.schemas.database import JobPosting
 from app.core.security import get_current_user
 
@@ -128,6 +128,7 @@ async def build_candidate_payload(
             "overall_score": attempt.get("overall_score"),
             "integrity_match": attempt.get("integrity_match"),
             "integrity_score": attempt.get("integrity_score"),
+            "initial_snapshot_url": attempt.get("initial_snapshot_url"),
             "started_at": attempt.get("started_at"),
             "completed_at": attempt.get("completed_at")
         })
@@ -170,19 +171,23 @@ async def get_live_jobs(request: Request, current_user: dict = Depends(get_curre
 async def get_admin_dashboard(request: Request, current_user: dict = Depends(get_current_user)):
     _require_admin(current_user)
     db = request.app.mongodb
-    now = datetime.utcnow()
+    now = datetime.now()
+    twenty_four_hours_ago = now - timedelta(hours=24)
 
     ongoing_jobs = await db.job_postings.find({
         "admin_id": current_user["user_id"],
         "is_active": True,
-        # "start_time": {"$lte": now},
+        "start_time": {"$lte": now},
         "end_time": {"$gte": now}
     }).to_list(length=100)
 
     past_jobs = await db.job_postings.find({
         "admin_id": current_user["user_id"],
         "is_active": True,
-        "end_time": {"$lt": now}
+        "end_time": {
+            "$lt": now,
+            "$gte": twenty_four_hours_ago
+        }
     }).to_list(length=200)
 
     ongoing_payload = []
@@ -212,6 +217,7 @@ async def get_admin_dashboard(request: Request, current_user: dict = Depends(get
 
 @router.get("/jobs/{job_id}/stats")
 async def get_job_stats(job_id: str, request: Request, current_user: dict = Depends(get_current_user)):
+    print(f"GET /jobs/{job_id}/stats - current_user: {current_user}")
     _require_admin(current_user)
     db = request.app.mongodb
 

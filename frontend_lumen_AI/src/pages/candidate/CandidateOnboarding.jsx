@@ -24,6 +24,10 @@ export default function CandidateOnboarding() {
       navigate('/');
       return;
     }
+    if (auth?.role !== 'candidate') {
+      navigate(auth?.role === 'admin' ? '/admin' : '/');
+      return;
+    }
 
     const loadProfile = async () => {
       try {

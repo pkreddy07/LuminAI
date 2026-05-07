@@ -17,6 +17,15 @@ export default function InterviewRules() {
   const [step, setStep] = useState('rules');
 
   useEffect(() => {
+    if (!auth?.token) {
+      navigate('/');
+      return;
+    }
+    if (auth?.role !== 'candidate') {
+      navigate(auth?.role === 'admin' ? '/admin' : '/');
+      return;
+    }
+
     if (step === 'camera') {
       navigator.mediaDevices.getUserMedia({ video: true })
         .then(s => {

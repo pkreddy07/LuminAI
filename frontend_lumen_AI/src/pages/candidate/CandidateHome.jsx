@@ -20,6 +20,10 @@ export default function CandidateHome() {
       navigate('/');
       return;
     }
+    if (auth?.role !== 'candidate') {
+      navigate(auth?.role === 'admin' ? '/admin' : '/');
+      return;
+    }
 
     const loadData = async () => {
       try {

@@ -135,7 +135,7 @@ async def update_profile(request: Request, profile_data: dict, current_user: dic
         raise HTTPException(status_code=403, detail="Only candidates can update profiles")
 
     db = request.app.mongodb
-    profile_data["updated_at"] = datetime.utcnow()
+    profile_data["updated_at"] = datetime.now()
 
     result = await db.candidate_profiles.update_one(
         {"user_id": current_user["user_id"]},
@@ -148,8 +148,9 @@ async def update_profile(request: Request, profile_data: dict, current_user: dic
 
 @router.get("/me")
 async def get_me(request: Request, current_user: dict = Depends(get_current_user)):
-    if current_user["role"] != "candidate":
-        raise HTTPException(status_code=403)
+    print(f"GET /me - current_user: {current_user}")
+    if current_user.get("role") != "candidate":
+        raise HTTPException(status_code=403, detail=f"Forbidden: role is {current_user.get('role')}")
 
     db = request.app.mongodb
     user = await db.users.find_one({"_id": ObjectId(current_user["user_id"])})
@@ -174,7 +175,7 @@ async def get_active_jobs(
         raise HTTPException(status_code=403)
 
     db = request.app.mongodb
-    now = datetime.utcnow()
+    now = datetime.now()
 
     # FIX: Removed the start_time filter so Upcoming interviews appear in the Active list!
     base_query = {
@@ -196,7 +197,7 @@ async def get_recent_jobs(
         raise HTTPException(status_code=403)
 
     db = request.app.mongodb
-    now = datetime.utcnow()
+    now = datetime.now()
     yesterday = now - timedelta(days=1)
 
     # Base condition: Ended in the last 24 hours
@@ -256,7 +257,7 @@ async def start_interview(
         raise HTTPException(status_code=404, detail="Job not found")
 
     allow_out_of_window = os.getenv("ALLOW_OUT_OF_WINDOW", "true").lower() in {"1", "true", "yes"}
-    now = datetime.utcnow()
+    now = datetime.now()
     if not allow_out_of_window and (job["start_time"] > now or job["end_time"] < now):
         raise HTTPException(status_code=400, detail="Interview window is closed")
 
@@ -267,13 +268,19 @@ async def start_interview(
     if existing_attempt:
         raise HTTPException(status_code=409, detail="Interview already attended")
 
-    snapshot_url = await _save_upload_file(snapshot, SNAPSHOT_DIR)
+    local_snapshot_path = await _save_upload_file(snapshot, SNAPSHOT_DIR)
+    full_local_path = SNAPSHOT_DIR / Path(local_snapshot_path).name
+    
+    import cloudinary.uploader
+    upload_result = cloudinary.uploader.upload(str(full_local_path), folder="lumin_ai/snapshots")
+    cloudinary_url = upload_result["secure_url"]
+
     attempt_doc = {
         "candidate_id": current_user["user_id"],
         "job_id": job_id,
-        "initial_snapshot_url": snapshot_url,
+        "initial_snapshot_url": cloudinary_url,
         "status": "In-Progress",
-        "started_at": datetime.utcnow()
+        "started_at": datetime.now()
     }
 
     result = await db.interview_attempts.insert_one(attempt_doc)
@@ -299,19 +306,24 @@ async def verify_face(
     if attempt.get("candidate_id") != current_user["user_id"]:
         raise HTTPException(status_code=403, detail="Not allowed")
 
-    live_snapshot_url = await _save_upload_file(snapshot, SNAPSHOT_DIR)
+    local_live_snapshot_path = await _save_upload_file(snapshot, SNAPSHOT_DIR)
+    live_path = SNAPSHOT_DIR / Path(local_live_snapshot_path).name
+    
+    import cloudinary.uploader
+    upload_result = cloudinary.uploader.upload(str(live_path), folder="lumin_ai/snapshots")
+    live_cloudinary_url = upload_result["secure_url"]
 
     match = True
     similarity = 0.92
     if os.getenv("ENABLE_FACE_MATCH", "false").lower() == "true":
         try:
             from req.face_matcher import compare_faces
-            initial_path = SNAPSHOT_DIR / Path(attempt["initial_snapshot_url"]).name
-            live_path = SNAPSHOT_DIR / Path(live_snapshot_url).name
-            result = compare_faces(initial_path, live_path)
+            initial_url = attempt["initial_snapshot_url"]
+            result = compare_faces(initial_url, live_cloudinary_url)
             match = result["match"]
             similarity = result["similarity"]
-        except Exception:
+        except Exception as e:
+            print(f"Face match failed: {e}")
             match = True
             similarity = 0.85
 
@@ -320,7 +332,7 @@ async def verify_face(
         {"$set": {"integrity_match": match, "integrity_score": similarity}}
     )
 
-    return {"match": match, "similarity": similarity, "snapshot_url": live_snapshot_url}
+    return {"match": match, "similarity": similarity, "snapshot_url": live_cloudinary_url}
 
 @router.post("/interviews/complete")
 async def complete_interview(
@@ -368,7 +380,7 @@ async def complete_interview(
         scores = _score_attempt(attempt_id)
 
     # Save the Cloudinary URL and Scores to MongoDB
-    update_data = {**scores, "status": "Completed", "completed_at": datetime.utcnow()}
+    update_data = {**scores, "status": "Completed", "completed_at": datetime.now()}
     if video_cloudinary_url:
         update_data["video_url"] = video_cloudinary_url
 

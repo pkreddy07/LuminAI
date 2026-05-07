@@ -28,7 +28,14 @@ SAMPLE_DB = SAMPLE_DIR / "db.jpg"
 
 
 def _read_image(image_path: str | Path):
-    img = cv2.imread(str(image_path))
+    path_str = str(image_path)
+    if path_str.startswith("http://") or path_str.startswith("https://"):
+        import urllib.request
+        req = urllib.request.urlopen(path_str)
+        arr = np.asarray(bytearray(req.read()), dtype=np.uint8)
+        img = cv2.imdecode(arr, -1)
+    else:
+        img = cv2.imread(path_str)
     if img is None:
         raise ValueError(f"Could not read image: {image_path}")
     return img
