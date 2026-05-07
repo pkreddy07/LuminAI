@@ -27,6 +27,7 @@ export default function InterviewCamera({ attemptId, currentQuestion, onQuestion
   const [questionIndex, setQuestionIndex] = useState(0);
   const [totalQuestions, setTotalQuestions] = useState(DEFAULT_TOTAL_QUESTIONS);
   const chunksRef = useRef([]);
+  const speakCallbackRef = useRef(null);
 
   // Conversational State
   const [hasStarted, setHasStarted] = useState(false);
@@ -157,31 +158,18 @@ export default function InterviewCamera({ attemptId, currentQuestion, onQuestion
     }
   }, [hasStarted, attemptId, auth?.token]);
 
-  // AI Speaking Helper
+  // AI Speaking Helper — audio and lip-sync are driven by InterviewAvatar via Simli
   const speakAI = (text, onEndCallback) => {
     setIsAiSpeaking(true);
-    const utterance = new SpeechSynthesisUtterance(text);
-    
-    // Prevent garbage collection bug in Chrome
-    window.currentUtterance = utterance;
+    speakCallbackRef.current = onEndCallback;
+  };
 
-    const voices = window.speechSynthesis.getVoices();
-    const proVoice = voices.find(v => v.name.includes('Google') || v.name.includes('Samantha') || v.lang === 'en-US');
-    if (proVoice) utterance.voice = proVoice;
-    utterance.rate = 1.0;
-    
-    const handleEnd = () => {
-      setIsAiSpeaking(false);
-      if (onEndCallback) onEndCallback();
-    };
-
-    utterance.onend = handleEnd;
-    utterance.onerror = (e) => {
-      console.warn('Speech synthesis error:', e);
-      handleEnd();
-    };
-
-    window.speechSynthesis.speak(utterance);
+  // Called by InterviewAvatar when Simli finishes speaking
+  const handleAvatarSpeakEnd = () => {
+    setIsAiSpeaking(false);
+    const cb = speakCallbackRef.current;
+    speakCallbackRef.current = null;
+    if (cb) cb();
   };
 
   // Start the Interview
@@ -436,7 +424,7 @@ export default function InterviewCamera({ attemptId, currentQuestion, onQuestion
           isAiSpeaking ? 'ring-4 ring-emerald-500 scale-105 shadow-[0_0_80px_rgba(16,185,129,0.3)]' : 'ring-2 ring-white/10'
         }`}>
            <div className="absolute inset-0 w-full h-full">
-             <InterviewAvatar currentQuestion={currentQuestion} hideBackground={true} isAiSpeaking={isAiSpeaking} />
+             <InterviewAvatar currentQuestion={currentQuestion} hideBackground={true} isAiSpeaking={isAiSpeaking} onSpeakEnd={handleAvatarSpeakEnd} />
            </div>
            
            {/* If AI is thinking, show small spinner overlay on avatar */}

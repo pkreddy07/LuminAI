@@ -1,4 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, UploadFile, File, Form
+from fastapi.responses import Response
+import edge_tts
 from pydantic import BaseModel
 from app.core.security import get_current_user
 from datetime import datetime, timedelta
@@ -241,8 +243,9 @@ async def start_interview(
     snapshot: UploadFile = File(...),
     current_user: dict = Depends(get_current_user)
 ):
+    print("CURRENT USER IN START_INTERVIEW:", current_user)
     if current_user["role"] != "candidate":
-        raise HTTPException(status_code=403)
+        raise HTTPException(status_code=403, detail=f"Invalid role: {current_user.get('role')}")
 
     db = request.app.mongodb
     if not ObjectId.is_valid(job_id):
@@ -375,6 +378,22 @@ async def complete_interview(
     )
 
     return {"message": "Interview completed", "scores": scores, "video_url": video_cloudinary_url}
+@router.get("/interviews/tts")
+async def text_to_speech(
+    text: str,
+    current_user: dict = Depends(get_current_user)
+):
+    if not text or not text.strip():
+        raise HTTPException(status_code=400, detail="Text is required")
+    communicate = edge_tts.Communicate(text=text.strip(), voice="en-US-JennyNeural")
+    audio_data = bytearray()
+    async for chunk in communicate.stream():
+        if chunk["type"] == "audio":
+            audio_data.extend(chunk["data"])
+    if not audio_data:
+        raise HTTPException(status_code=500, detail="TTS generation failed")
+    return Response(content=bytes(audio_data), media_type="audio/mpeg")
+
 class ChatMessage(BaseModel):
     role: str
     text: str
