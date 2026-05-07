@@ -257,7 +257,8 @@ async def start_interview(
         raise HTTPException(status_code=404, detail="Job not found")
 
     allow_out_of_window = os.getenv("ALLOW_OUT_OF_WINDOW", "true").lower() in {"1", "true", "yes"}
-    now = datetime.now()
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
     if not allow_out_of_window and (job["start_time"] > now or job["end_time"] < now):
         raise HTTPException(status_code=400, detail="Interview window is closed")
 

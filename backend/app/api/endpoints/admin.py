@@ -171,7 +171,8 @@ async def get_live_jobs(request: Request, current_user: dict = Depends(get_curre
 async def get_admin_dashboard(request: Request, current_user: dict = Depends(get_current_user)):
     _require_admin(current_user)
     db = request.app.mongodb
-    now = datetime.now()
+    from datetime import timezone
+    now = datetime.now(timezone.utc)
     twenty_four_hours_ago = now - timedelta(hours=24)
 
     ongoing_jobs = await db.job_postings.find({

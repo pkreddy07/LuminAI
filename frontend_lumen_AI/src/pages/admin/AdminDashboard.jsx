@@ -115,9 +115,9 @@ export default function AdminDashboard() {
           .map((item) => item.trim())
           .filter(Boolean),
         ask_category: scheduleData.ask_category,
-        start_time: scheduleData.start_time,
-        end_time: scheduleData.end_time,
-        duration_minutes: parseInt(scheduleData.duration_minutes, 10) || 30 // <--- ADD THIS
+        start_time: new Date(scheduleData.start_time).toISOString(),
+        end_time: new Date(scheduleData.end_time).toISOString(),
+        duration_minutes: parseInt(scheduleData.duration_minutes, 10) || 30
       };
 
       await apiJson('/api/admin/jobs', {
