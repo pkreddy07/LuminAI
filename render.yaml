@@ -8,6 +8,8 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
       - key: MONGO_URL
         value: "mongodb+srv://mrpkreddy07:Pranav%402007@luminai.a55onpu.mongodb.net/lumin_ai_open?authSource=admin&retryWrites=true&w=majority"
       - key: SECRET_KEY
