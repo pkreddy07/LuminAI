@@ -16,3 +16,4 @@ deepface
 tf-keras
 cloudinary
 google-generativeai
+edge-tts

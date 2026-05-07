@@ -1,206 +1,217 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Environment, ContactShadows, useGLTF } from '@react-three/drei';
-import { ConvaiClient } from 'convai-web-sdk';
+import React, { useEffect, useRef, useState } from 'react';
+import { SimliClient, generateSimliSessionToken, LogLevel } from 'simli-client';
+import { getAuth } from '../lib/auth';
 
-// TODO: Replace with the keys from Step 1!
-const CONVAI_API_KEY = "b3af4b38de956e650abecaf5ed81f4ca";
-const CHARACTER_ID = "87162aea-488f-11f1-a794-42010a7be02e";
+const SIMLI_API_KEY = import.meta.env.VITE_SIMLI_API_KEY || '';
+const SIMLI_FACE_ID = import.meta.env.VITE_SIMLI_FACE_ID || '';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-export default function InterviewAvatar({ currentQuestion, hideBackground, isAiSpeaking }) {
-  const [convaiClient, setConvaiClient] = useState(null);
-  const [isReady, setIsReady] = useState(false);
+export default function InterviewAvatar({ currentQuestion, hideBackground, isAiSpeaking, onSpeakEnd }) {
+  const videoRef = useRef(null);
+  const audioRef = useRef(null);
+  const simliRef = useRef(null);
+  const isSpeakingNowRef = useRef(false);
+  const lastSpokenRef = useRef(null);
+  const pendingSpeakRef = useRef(null); // text queued while Simli was still connecting
+  const onSpeakEndRef = useRef(onSpeakEnd);
+  const [isConnected, setIsConnected] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
 
+  // Keep callback ref current across renders
   useEffect(() => {
-    // Initialize the Convai Brain
-    const client = new ConvaiClient({
-      apiKey: CONVAI_API_KEY,
-      characterId: CHARACTER_ID,
-      enableAudio: true, 
-    });
+    onSpeakEndRef.current = onSpeakEnd;
+  }, [onSpeakEnd]);
 
-    setConvaiClient(client);
-    setIsReady(true);
+  // Initialize SimliClient once on mount
+  useEffect(() => {
+    if (!SIMLI_API_KEY || !SIMLI_FACE_ID) {
+      setConnectionError('Simli credentials not configured');
+      return;
+    }
+
+    let stopped = false;
+    let client = null;
+
+    // Releases any blocked interview flow on error or init failure
+    function releaseBlockedSpeech() {
+      if (pendingSpeakRef.current) {
+        pendingSpeakRef.current = null;
+        if (onSpeakEndRef.current) onSpeakEndRef.current();
+      } else if (isSpeakingNowRef.current) {
+        isSpeakingNowRef.current = false;
+        if (onSpeakEndRef.current) onSpeakEndRef.current();
+      }
+    }
+
+    async function initSimli() {
+      try {
+        const { session_token } = await generateSimliSessionToken({
+          apiKey: SIMLI_API_KEY,
+          config: {
+            faceId: SIMLI_FACE_ID,
+            handleSilence: true,
+            maxSessionLength: 3600,
+            maxIdleTime: 600,
+            model: 'fasttalk',
+          },
+        });
+
+        if (stopped) return;
+
+        client = new SimliClient(
+          session_token,
+          videoRef.current,
+          audioRef.current,
+          null,           // ICE servers — not needed for livekit
+          LogLevel.ERROR,
+          'livekit'
+        );
+
+        simliRef.current = client;
+
+        client.on('start', () => {
+          if (!stopped) setIsConnected(true);
+        });
+
+        client.on('silent', () => {
+          if (isSpeakingNowRef.current) {
+            isSpeakingNowRef.current = false;
+            if (onSpeakEndRef.current) onSpeakEndRef.current();
+          }
+        });
+
+        client.on('error', (msg) => {
+          console.error('Simli error:', msg);
+          if (!stopped) setConnectionError('Avatar connection error');
+          releaseBlockedSpeech();
+        });
+
+        await client.start();
+      } catch (err) {
+        console.error('Simli init error:', err);
+        if (!stopped) setConnectionError('Failed to connect avatar');
+        releaseBlockedSpeech();
+      }
+    }
+
+    initSimli();
 
     return () => {
-      // Cleanup if needed - ConvaiClient handles cleanup internally
-      if (client && typeof client.close === 'function') {
-        client.close();
+      stopped = true;
+      if (simliRef.current) {
+        simliRef.current.stop().catch(() => {});
+        simliRef.current = null;
       }
+      setIsConnected(false);
     };
   }, []);
 
-  // Watch for new questions from the LLM backend!
+  // When AI has a new question, either speak it or queue it if still connecting
   useEffect(() => {
-    if (convaiClient && currentQuestion && isReady) {
-      // Use the correct ConvaiClient API methods
-      try {
-        if (typeof convaiClient.sendTextChunk === 'function') {
-          convaiClient.sendTextChunk(currentQuestion);
-        } else if (typeof convaiClient.sendTextStream === 'function') {
-          convaiClient.sendTextStream(currentQuestion);
-        } else {
-          console.warn('Neither sendTextChunk nor sendTextStream available');
-        }
-      } catch (error) {
-        console.error('Error sending text to ConvaiClient:', error);
-      }
+    if (!isAiSpeaking || !currentQuestion) return;
+    if (currentQuestion === lastSpokenRef.current) return;
+
+    lastSpokenRef.current = currentQuestion;
+
+    if (!simliRef.current || !isConnected) {
+      // Simli still connecting — hold the text, speak once connected
+      pendingSpeakRef.current = currentQuestion;
+      return;
     }
-  }, [currentQuestion, convaiClient, isReady]);
+
+    speakWithSimli(currentQuestion);
+  }, [isAiSpeaking, currentQuestion, isConnected]);
+
+  // When Simli connects, speak any text that arrived during connection
+  useEffect(() => {
+    if (!isConnected || !pendingSpeakRef.current) return;
+    const text = pendingSpeakRef.current;
+    pendingSpeakRef.current = null;
+    speakWithSimli(text);
+  }, [isConnected]);
+
+  async function speakWithSimli(text) {
+    const auth = getAuth();
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/candidate/interviews/tts?text=${encodeURIComponent(text)}`,
+        { headers: { Authorization: `Bearer ${auth?.token}` } }
+      );
+
+      if (!response.ok) throw new Error(`TTS request failed: ${response.status}`);
+
+      const arrayBuffer = await response.arrayBuffer();
+
+      // Decode MP3 at native sample rate
+      const decodeCtx = new AudioContext();
+      const decoded = await decodeCtx.decodeAudioData(arrayBuffer);
+      await decodeCtx.close();
+
+      // Resample to 16 kHz mono — required by Simli
+      const targetRate = 16000;
+      const frameCount = Math.ceil(decoded.duration * targetRate);
+      const offlineCtx = new OfflineAudioContext(1, frameCount, targetRate);
+      const src = offlineCtx.createBufferSource();
+      src.buffer = decoded;
+      src.connect(offlineCtx.destination);
+      src.start();
+      const resampled = await offlineCtx.startRendering();
+
+      // Float32 → Int16 PCM → Uint8Array
+      const floats = resampled.getChannelData(0);
+      const pcm = new Int16Array(floats.length);
+      for (let i = 0; i < floats.length; i++) {
+        pcm[i] = Math.max(-32768, Math.min(32767, Math.round(floats[i] * 32767)));
+      }
+
+      isSpeakingNowRef.current = true;
+      simliRef.current.sendAudioData(new Uint8Array(pcm.buffer));
+    } catch (err) {
+      console.error('Simli speak error:', err);
+      isSpeakingNowRef.current = false;
+      if (onSpeakEndRef.current) onSpeakEndRef.current();
+    }
+  }
 
   return (
-    <div style={{ width: '100%', height: hideBackground ? '100%' : '500px', background: hideBackground ? 'transparent' : '#1a1a2e', borderRadius: hideBackground ? '0' : '12px', overflow: 'hidden' }}>
-      <Canvas camera={{ position: [0, 1.65, 0.9], fov: 40 }}>
-        
-        {/* Cinematic Lighting & Office Background */}
-        <Environment preset="apartment" background blur={0.8} />
-        <ambientLight intensity={0.8} />
-        <spotLight position={[0, 2, 2]} intensity={2} angle={0.5} penumbra={1} />
-        <directionalLight position={[10, 10, 10]} intensity={1} />
-
-        {/* The 3D Character Container */}
-        {isReady && convaiClient && (
-           <ConvaiModel client={convaiClient} isAiSpeaking={isAiSpeaking} /> 
-        )}
-
-        <ContactShadows position={[0, 0, 0]} opacity={0.5} scale={10} blur={2} />
-        <OrbitControls 
-          enableZoom={false} 
-          enablePan={false} 
-          target={[0, 1.55, 0]} 
-          minPolarAngle={Math.PI / 2} 
-          maxPolarAngle={Math.PI / 2} 
-        />
-      </Canvas>
-    </div>
-  );
-}
-
-// Helper component to render the 3D character model
-function ConvaiModel({ client, isAiSpeaking }) {
-  const avatarRef = useRef();
-
-  // Load the model from public folder
-  const { scene } = useGLTF('/model2.glb');
-
-  // Simple simulated lip-sync
-  useFrame((state) => {
-    if (!scene) return;
-
-    let foundMorph = false;
-    let foundJaw = false;
-
-    // Find the mesh that actually has morph targets (typically the Head mesh)
-    scene.traverse((node) => {
-      if (node.isMesh && node.morphTargetDictionary) {
-        
-        // Find indices for common mouth-opening morph targets
-        const morphTargets = [
-          'jawOpen', 'mouthOpen', 'viseme_O', 'viseme_aa', 'viseme_a', 'v_aa'
-        ];
-        
-        let targetIndex = -1;
-        for (const name of morphTargets) {
-          if (node.morphTargetDictionary[name] !== undefined) {
-            targetIndex = node.morphTargetDictionary[name];
-            break;
-          }
-        }
-
-        // If we found a mouth morph target, animate it!
-        if (targetIndex !== -1) {
-          foundMorph = true;
-          if (isAiSpeaking) {
-            // Create a randomized flapping motion based on time
-            const time = state.clock.getElapsedTime();
-            // Use multiple sine waves combined to make it look like random speech syllables
-            const speechPulse = (Math.sin(time * 15) * 0.5 + 0.5) * 0.5 + 
-                                (Math.sin(time * 25) * 0.5 + 0.5) * 0.3 + 
-                                (Math.sin(time * 8) * 0.5 + 0.5) * 0.2;
-            
-            // Apply it to the morph target array
-            node.morphTargetInfluences[targetIndex] = speechPulse * 0.8;
-          } else {
-            // Smoothly close the mouth when not speaking
-            node.morphTargetInfluences[targetIndex] *= 0.8;
-          }
-        }
-      }
-      
-        // If it has a jaw bone instead of morph targets, rotate it
-        if (node.isBone && (node.name.toLowerCase().includes('jaw') || node.name === 'Jaw')) {
-          foundJaw = true;
-          if (isAiSpeaking) {
-             const time = state.clock.getElapsedTime();
-             const speechPulse = (Math.sin(time * 15) * 0.5 + 0.5) * 0.5 + (Math.sin(time * 25) * 0.5 + 0.5) * 0.3;
-             node.rotation.x = Math.max(0, speechPulse * 0.15); 
-          } else {
-             node.rotation.x *= 0.8;
-          }
-        }
-        
-        // Fallback: If no morph targets and no jaw, squish the Head bone slightly to simulate talking
-        if (node.isBone && node.name === 'Head' && !foundMorph && !foundJaw) {
-          if (isAiSpeaking) {
-             const time = state.clock.getElapsedTime();
-             const speechPulse = (Math.sin(time * 15) * 0.5 + 0.5) * 0.5 + (Math.sin(time * 25) * 0.5 + 0.5) * 0.3;
-             // Rapidly scale the head's Y axis down by up to 4% to simulate jaw opening
-             node.scale.y = 1 - (speechPulse * 0.04);
-             // Slightly widen the head to preserve volume
-             node.scale.x = 1 + (speechPulse * 0.015);
-             node.scale.z = 1 + (speechPulse * 0.015);
-          } else {
-             // Smoothly return to normal scale
-             node.scale.y += (1 - node.scale.y) * 0.2;
-             node.scale.x += (1 - node.scale.x) * 0.2;
-             node.scale.z += (1 - node.scale.z) * 0.2;
-          }
-        }
-      });
-
-    // Slight breathing/idle animation for the whole avatar
-    if (avatarRef.current) {
-       const time = state.clock.getElapsedTime();
-       // Subtle breathing
-       avatarRef.current.position.y = Math.sin(time * 2) * 0.005;
-       
-       if (isAiSpeaking) {
-          // Slight head bobbing while talking
-          avatarRef.current.rotation.y = Math.sin(time * 1.5) * 0.02;
-          avatarRef.current.rotation.x = Math.sin(time * 3) * 0.01;
-       } else {
-          // Return to center
-          avatarRef.current.rotation.y *= 0.95;
-          avatarRef.current.rotation.x *= 0.95;
-       }
-    }
-  });
-
-  return (
-    <group ref={avatarRef}>
-      {scene ? (
-        <primitive object={scene} position={[0, 0, 0]} scale={1} />
-      ) : (
-        // Fallback: simple geometric character
-        <>
-          <mesh position={[0, 1.5, 0]} scale={0.6}>
-            <sphereGeometry args={[1, 32, 32]} />
-            <meshStandardMaterial color="#fdbcb4" />
-          </mesh>
-          <mesh position={[0, 0.5, 0]} scale={[0.5, 1, 0.3]}>
-            <boxGeometry args={[1, 1, 1]} />
-            <meshStandardMaterial color="#4a90e2" />
-          </mesh>
-          <mesh position={[-0.6, 0.8, 0]} scale={[0.15, 0.8, 0.15]}>
-            <boxGeometry args={[1, 1, 1]} />
-            <meshStandardMaterial color="#fdbcb4" />
-          </mesh>
-          <mesh position={[0.6, 0.8, 0]} scale={[0.15, 0.8, 0.15]}>
-            <boxGeometry args={[1, 1, 1]} />
-            <meshStandardMaterial color="#fdbcb4" />
-          </mesh>
-        </>
+    <div
+      style={{
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+        background: 'transparent',
+        overflow: 'hidden',
+        borderRadius: 'inherit',
+      }}
+    >
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+      />
+      <audio ref={audioRef} autoPlay />
+      {connectionError && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: 'rgba(15,15,15,0.85)',
+            color: '#f87171',
+            fontSize: '11px',
+            textAlign: 'center',
+            padding: '8px',
+            gap: '4px',
+          }}
+        >
+          <span>Avatar unavailable</span>
+          <span style={{ color: '#94a3b8', fontSize: '10px' }}>{connectionError}</span>
+        </div>
       )}
-    </group>
+    </div>
   );
 }
