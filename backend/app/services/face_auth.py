@@ -52,3 +52,16 @@ def compare_face_vectors(reference_vector: list[float], live_vector: list[float]
     v1 = np.array(reference_vector)
     v2 = np.array(live_vector)
     return bool(np.linalg.norm(v1 - v2) <= threshold)
+
+def upload_video_to_cloudinary(video_file_path: str) -> str:
+    """Uploads a saved video file to Cloudinary and returns the secure URL."""
+    try:
+        response = cloudinary.uploader.upload(
+            video_file_path, 
+            resource_type="video", 
+            folder="lumin_ai/interviews" 
+        )
+        return response["secure_url"]
+    except Exception as e:
+        print(f"Cloudinary Video Upload Error: {e}")
+        return None

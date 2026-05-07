@@ -26,6 +26,7 @@ export default function InterviewCamera({ attemptId, currentQuestion, onQuestion
   const [interviewError, setInterviewError] = useState('');
   const [questionIndex, setQuestionIndex] = useState(0);
   const [totalQuestions, setTotalQuestions] = useState(DEFAULT_TOTAL_QUESTIONS);
+  const chunksRef = useRef([]);
 
   // Conversational State
   const [hasStarted, setHasStarted] = useState(false);
@@ -199,13 +200,25 @@ export default function InterviewCamera({ attemptId, currentQuestion, onQuestion
     }
     
     // Start Recording Video
+        // Start Recording Video
     const stream = videoRef.current.srcObject;
     if (stream) {
-      mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'video/webm' });
-      mediaRecorderRef.current.addEventListener('dataavailable', ({ data }) => {
-        if (data.size > 0) setRecordedChunks((prev) => prev.concat(data));
-      });
-      mediaRecorderRef.current.start();
+      const options = MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus') 
+        ? { mimeType: 'video/webm;codecs=vp8,opus' } 
+        : { mimeType: 'video/webm' };
+        
+      mediaRecorderRef.current = new MediaRecorder(stream, options);
+      
+      // 🌟 CRITICAL: Wipe the memory completely clean for the new interview!
+      chunksRef.current = []; 
+      
+      mediaRecorderRef.current.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          chunksRef.current.push(e.data);
+        }
+      };
+      
+      mediaRecorderRef.current.start(1000); 
     }
 
     // AI Greeting
@@ -372,35 +385,44 @@ export default function InterviewCamera({ attemptId, currentQuestion, onQuestion
   };
 
   const concludeInterview = async () => {
-    setIsFinalizing(true);
-    if (mediaRecorderRef.current) mediaRecorderRef.current.stop();
+    setIsFinalizing(false); 
+    setFinalScore(true);
 
-    // End call UI change
-    setTimeout(async () => {
-      try {
-        const formData = new FormData();
-        formData.append('attempt_id', attemptId);
-        
-        setRecordedChunks(currentChunks => {
-          if (currentChunks.length > 0) {
-            const blob = new Blob(currentChunks, { type: 'video/webm' });
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      
+      mediaRecorderRef.current.onstop = () => {
+        // Wait 100ms just to ensure the final ondataavailable event finished pushing to the array
+        setTimeout(() => {
+          if (chunksRef.current.length > 0) {
+            const blob = new Blob(chunksRef.current, { type: 'video/webm' });
+            console.log(`Final Video Size: ${blob.size / 1024 / 1024} MB`); // Debugging line!
+            
+            const formData = new FormData();
+            formData.append('attempt_id', attemptId);
             formData.append('video', blob, 'interview_recording.webm');
+
+            console.log("Uploading fresh video to backend...");
+
+            apiJson('/api/candidate/interviews/complete', {
+              method: 'POST', 
+              token: auth?.token, 
+              isForm: true, 
+              body: formData
+            }).then(() => {
+              console.log("Upload Success!");
+              // 🌟 CRITICAL: Wipe it again after upload so it can't leak into the next interview
+              chunksRef.current = []; 
+            }).catch((err) => {
+              console.error("Upload failed:", err);
+            });
           }
-          
-          apiJson('/api/candidate/interviews/complete', {
-            method: 'POST', token: auth?.token, isForm: true, body: formData
-          }).then(() => {
-            setFinalScore(true);
-            setIsFinalizing(false);
-          });
-          
-          return currentChunks;
-        });
-      } catch (err) {
-        console.error(err);
-        setIsFinalizing(false);
-      }
-    }, 1000);
+        }, 100);
+      };
+
+      // Force the recorder to dump its final chunk of video, then stop
+      mediaRecorderRef.current.requestData();
+      mediaRecorderRef.current.stop();
+    }
   };
 
   return (

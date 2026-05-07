@@ -173,13 +173,19 @@ UPLOAD_DIR = Path(__file__).resolve().parent.parent / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
-# Essential for connecting Next.js to FastAPI
+origins = [
+    "http://localhost:5173",  # React frontend
+    "http://127.0.0.1:5173"  # Live Server frontend
+]
+
+# Essential for connecting React/Vite to FastAPI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Change to your frontend URL in production
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
