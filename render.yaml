@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: luminai-backend
+    env: docker
+    region: singapore
+    rootDir: backend
+    plan: free # Note: deepface models might require 'starter' plan (512MB RAM minimum)
+    envVars:
+      - key: MONGO_URL
+        sync: false # Set this value manually in the Render dashboard
+      - key: CLOUDINARY_URL
+        sync: false # Set this value manually in the Render dashboard
+      - key: GOOGLE_API_KEY
+        sync: false # Set this value manually in the Render dashboard
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SEED_DEV_DATA
+        value: "true" # Will seed the first time, can be disabled later
